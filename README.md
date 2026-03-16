@@ -6,6 +6,120 @@ huragok wraps the fragmented workflow of going from a text description to a game
 
 ---
 
+## Usage scenarios
+
+### "I need a gun model for my game"
+
+You're building an FPS and need a rifle model. You don't have a 3D artist.
+
+```bash
+$ huragok create "futuristic assault rifle, angular design, matte black with blue accents"
+```
+
+huragok refines your prompt, shows you what it came up with — you approve it. It generates concept art — a clean side-view of the rifle. Looks good, you accept. It sends that to Hunyuan3D, waits about a minute, and drops a 48k-face mesh on disk. You inspect it in the review UI (`huragok review`), approve, and it decimates it down to 8k faces and writes `static/assault_rifle.glb`. Total time: ~2 minutes. Cost: ~$0.15.
+
+### "Claude, add an energy sword to the arena"
+
+You're working in Claude Code on your game project. You tell Claude you want a new melee weapon. Claude knows about the huragok skill, so it runs:
+
+```bash
+huragok create "Halo-style energy sword, glowing plasma blade, alien hilt" \
+  --auto --output static/energy_sword.glb --json
+```
+
+Claude parses the JSON response, confirms the model was generated (8k faces, 1.8 MB), then wires it into the game code — imports the GLB, adds it to the weapon system, and sets up the melee logic. You never left your editor.
+
+### "The crate model looks bad, I want to try a different provider"
+
+You generated a cargo crate last week. The shape was fine but the textures were muddy. Your concept art was great though — you don't want to redo that.
+
+```bash
+$ huragok runs
+  2026-03-10_cargo_crate_a3f8   complete   hunyuan3d/pro   $0.14
+  2026-03-12_plasma_rifle_b7c2  complete   hunyuan3d/pro   $0.16
+
+$ huragok resume 2026-03-10_cargo_crate_a3f8 --from model3d --provider meshy
+```
+
+It picks up the existing concept art, sends it to Meshy instead of Hunyuan, and runs post-processing on the new mesh. The concept art wasn't regenerated, so you only paid for one 3D generation call.
+
+### "I have sketches from my artist, turn them into models"
+
+Your concept artist drew reference sheets for five weapons. You want 3D models from those drawings.
+
+```bash
+$ huragok create --from ./sketches/shotgun_front.png ./sketches/shotgun_side.png \
+    --output static/shotgun.glb
+```
+
+Skips prompt refinement and image generation entirely. Goes straight from your artist's images into 3D generation.
+
+### "I need to batch-generate props for a whole level"
+
+You have a list of environment props you need. You write a simple script:
+
+```bash
+#!/bin/bash
+assets=(
+  "metal storage locker, military, dented:storage_locker"
+  "wall-mounted terminal screen, sci-fi:wall_terminal"
+  "fluorescent ceiling light panel, industrial:ceiling_light"
+  "fire extinguisher, futuristic design:extinguisher"
+)
+
+for entry in "${assets[@]}"; do
+  prompt="${entry%%:*}"
+  name="${entry##*:}"
+  huragok create "$prompt" --auto --output "static/${name}.glb" --json
+done
+```
+
+Runs headlessly, generates all four assets unattended. Check the results in the review UI afterward.
+
+### "I want to review everything from today's generation session"
+
+You generated a handful of assets throughout the day. You want to review them all, compare variants, and decide which to keep.
+
+```bash
+$ huragok review
+```
+
+Opens a local web dashboard in your browser. You see all today's runs, can rotate and inspect each 3D model, compare side-by-side, view the concept art that produced each one, and check costs.
+
+---
+
+## Review UI
+
+The terminal is fine for approving prompts and kicking off generation, but reviewing images and 3D models requires actual visual inspection. huragok includes an optional local web dashboard for this.
+
+```bash
+# Open the review UI for all runs
+huragok review
+
+# Open a specific run
+huragok review 2026-03-10_cargo_crate_a3f8
+```
+
+This launches a lightweight local server and opens your browser. No Electron, no install — just a local page.
+
+### What you can do in the review UI
+
+**Run timeline** — browse all past runs chronologically, filter by status, search by prompt.
+
+**Image gallery** — view generated concept art at full resolution. Compare multiple generations side by side. Zoom, pan, check details.
+
+**3D model viewer** — interactive three.js viewer for inspecting meshes. Rotate, zoom, check from all angles. Toggle wireframe to inspect topology. Switch between raw and post-processed versions.
+
+**Before/after comparison** — side-by-side view of the raw mesh vs. the post-processed output. See poly count reduction, texture changes, scale normalization.
+
+**Variant picker** — when you generate multiple variants at the 3D stage, view them all in a carousel and pick the winner.
+
+**Cost dashboard** — running total of API spend, broken down by provider and stage. Useful for tracking budget over time.
+
+The review UI reads directly from the `.huragok/runs/` directory. It doesn't store anything extra — if you delete a run from disk, it disappears from the UI.
+
+---
+
 ## Pipeline overview
 
 ```
@@ -434,6 +548,9 @@ huragok config                   Show resolved configuration
 huragok config init              Create a .huragok/config.toml in the current project
 huragok config set <key> <val>   Set a configuration value
 
+huragok review [run-id]          Open the review UI in your browser
+  --port <port>                  Local server port (default: 4680)
+
 huragok providers                List available providers and their capabilities
 ```
 
@@ -450,6 +567,8 @@ huragok providers                List available providers and their capabilities
 - [ ] Headless/JSON mode for agent integration
 - [ ] Claude Code skill file
 - [ ] Cost tracking and budgets
+- [ ] Review UI (local web dashboard with 3D viewer)
 - [ ] Additional providers (Meshy, Tripo, Stability AI)
 - [ ] Turnaround sheet / multi-view synthesis support
 - [ ] Recipe/preset system for common asset types
+- [ ] Batch generation mode
