@@ -5,11 +5,15 @@
 <h1 align="center">huragok</h1>
 
 <p align="center">
-  A CLI tool for AI-powered 3D asset generation.<br>
-  Named after the <a href="https://www.halopedia.org/Huragok">Huragok</a> (Engineers) from the Halo game series, creatures that can "fabricate complex objects seemingly out of thin air".
+  Describe what you want. Get a 3D model back.<br><br>
+  <code>huragok create "sci-fi cargo crate, metal panels, glowing indicators" --output crate.glb</code>
 </p>
 
-huragok wraps the fragmented workflow of going from a text description to a game-ready 3D model into a single, reproducible pipeline. It works interactively at the terminal, or headlessly as part of an AI agent or CI workflow.
+huragok is a CLI tool that turns a text description into a game-ready 3D model in under 3 minutes. It generates a concept image using AI (DALL-E 3), then converts that image into a textured 3D mesh (Hunyuan3D) and outputs a .glb file you can drop into any game engine or 3D viewer.
+
+No modeling skills required. No manual steps. One command, one file out.
+
+Named after the <a href="https://www.halopedia.org/Huragok">Huragok</a> (Engineers) from Halo — creatures that fabricate complex objects out of thin air.
 
 ---
 
