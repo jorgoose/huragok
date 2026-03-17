@@ -75,11 +75,13 @@ func GenerateImage(ctx context.Context, apiKey, prompt, outDir string) (*ImageRe
 	if err != nil {
 		return nil, fmt.Errorf("creating image file: %w", err)
 	}
-	defer f.Close()
 
 	if _, err := io.Copy(f, httpResp.Body); err != nil {
+		f.Close()
+		os.Remove(outPath)
 		return nil, fmt.Errorf("saving image: %w", err)
 	}
+	f.Close()
 
 	return &ImageResult{Path: outPath, URL: imgURL}, nil
 }

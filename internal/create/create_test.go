@@ -2,14 +2,13 @@ package create
 
 import (
 	"context"
-	"os"
 	"testing"
 )
 
 func TestRunMissingOpenAIKey(t *testing.T) {
-	os.Unsetenv("HURAGOK_OPENAI_KEY")
-	os.Unsetenv("HURAGOK_HUNYUAN_SECRET_ID")
-	os.Unsetenv("HURAGOK_HUNYUAN_SECRET_KEY")
+	t.Setenv("HURAGOK_OPENAI_KEY", "")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "")
 
 	err := Run(context.Background(), "test prompt", "output.glb")
 	if err == nil {
@@ -22,8 +21,8 @@ func TestRunMissingOpenAIKey(t *testing.T) {
 
 func TestRunMissingHunyuanSecretID(t *testing.T) {
 	t.Setenv("HURAGOK_OPENAI_KEY", "fake-key")
-	os.Unsetenv("HURAGOK_HUNYUAN_SECRET_ID")
-	os.Unsetenv("HURAGOK_HUNYUAN_SECRET_KEY")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "")
 
 	err := Run(context.Background(), "test prompt", "output.glb")
 	if err == nil {
@@ -37,7 +36,7 @@ func TestRunMissingHunyuanSecretID(t *testing.T) {
 func TestRunMissingHunyuanSecretKey(t *testing.T) {
 	t.Setenv("HURAGOK_OPENAI_KEY", "fake-key")
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "fake-id")
-	os.Unsetenv("HURAGOK_HUNYUAN_SECRET_KEY")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "")
 
 	err := Run(context.Background(), "test prompt", "output.glb")
 	if err == nil {
