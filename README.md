@@ -48,7 +48,7 @@ $ huragok runs
 $ huragok resume 2026-03-10_cargo_crate_a3f8 --from model3d --provider meshy
 ```
 
-It picks up the existing concept art, sends it to Meshy instead of Hunyuan, and runs post-processing on the new mesh. The concept art wasn't regenerated, so you only paid for one 3D generation call.
+It picks up the existing concept art, sends it to Meshy instead of Hunyuan, and runs post-processing on the new mesh. The concept art wasn't regenerated, so you only paid for one 3D generation call. At scale, this kind of selective re-run adds up — skipping redundant stages across dozens of assets can significantly reduce API costs.
 
 ### "I have sketches from my artist, turn them into models"
 
