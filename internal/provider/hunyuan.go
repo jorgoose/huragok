@@ -15,15 +15,9 @@ import (
 	hunyuan "github.com/tencentcloud/tencentcloud-sdk-go-intl-en/tencentcloud/hunyuan/v20230901"
 )
 
-// GenerateModel sends an image to Hunyuan3D Pro via Tencent Cloud and returns the path to the generated .glb file.
-func GenerateModel(ctx context.Context, secretID, secretKey, imagePath, outDir string) (string, error) {
-	// Read and base64-encode the input image
-	imgData, err := os.ReadFile(imagePath)
-	if err != nil {
-		return "", fmt.Errorf("reading image %s: %w", imagePath, err)
-	}
-	b64Image := base64.StdEncoding.EncodeToString(imgData)
-
+// GenerateModel sends an image to Hunyuan3D Rapid via Tencent Cloud and returns the path to the generated .glb file.
+// If imageURL is provided, it's used directly (avoids base64 size limits). Otherwise falls back to base64 from imagePath.
+func GenerateModel(ctx context.Context, secretID, secretKey, imagePath, imageURL, outDir string) (string, error) {
 	// Create Tencent Cloud client — hunyuan service, international endpoint, ap-singapore region
 	credential := common.NewCredential(secretID, secretKey)
 	cpf := profile.NewClientProfile()
@@ -34,11 +28,21 @@ func GenerateModel(ctx context.Context, secretID, secretKey, imagePath, outDir s
 		return "", fmt.Errorf("creating hunyuan client: %w", err)
 	}
 
-	// Submit the 3D generation job
-	request := hunyuan.NewSubmitHunyuanTo3DProJobRequest()
-	request.ImageBase64 = common.StringPtr(b64Image)
+	// Submit the 3D generation job (Rapid — supports GLB output directly)
+	request := hunyuan.NewSubmitHunyuanTo3DRapidJobRequest()
+	if imageURL != "" {
+		request.ImageUrl = common.StringPtr(imageURL)
+	} else {
+		imgData, err := os.ReadFile(imagePath)
+		if err != nil {
+			return "", fmt.Errorf("reading image %s: %w", imagePath, err)
+		}
+		request.ImageBase64 = common.StringPtr(base64.StdEncoding.EncodeToString(imgData))
+	}
+	request.ResultFormat = common.StringPtr("GLB")
+	request.EnablePBR = common.BoolPtr(true)
 
-	response, err := client.SubmitHunyuanTo3DProJobWithContext(ctx, request)
+	response, err := client.SubmitHunyuanTo3DRapidJobWithContext(ctx, request)
 	if err != nil {
 		return "", fmt.Errorf("submitting hunyuan3d job: %w", err)
 	}
@@ -82,10 +86,10 @@ func pollForResult(ctx context.Context, client *hunyuan.Client, jobID string) (s
 		case <-timeout:
 			return "", fmt.Errorf("hunyuan3d job timed out after 5 minutes")
 		case <-ticker.C:
-			request := hunyuan.NewQueryHunyuanTo3DProJobRequest()
+			request := hunyuan.NewQueryHunyuanTo3DRapidJobRequest()
 			request.JobId = common.StringPtr(jobID)
 
-			resp, err := client.QueryHunyuanTo3DProJobWithContext(ctx, request)
+			resp, err := client.QueryHunyuanTo3DRapidJobWithContext(ctx, request)
 			if err != nil {
 				return "", fmt.Errorf("polling hunyuan3d job: %w", err)
 			}

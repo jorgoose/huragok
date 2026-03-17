@@ -45,18 +45,18 @@ func Run(ctx context.Context, prompt, outputPath string) error {
 
 	// Stage 1: Generate concept image via OpenAI
 	t := display.StageStart("Generating concept image...")
-	imagePath, err := provider.GenerateImage(ctx, openaiKey, prompt, workDir)
+	imgResult, err := provider.GenerateImage(ctx, openaiKey, prompt, workDir)
 	if err != nil {
 		display.Error(err.Error())
 		return err
 	}
 	display.StageDone(t)
-	display.StageInfo(fmt.Sprintf("Saved → %s", imagePath))
+	display.StageInfo(fmt.Sprintf("Saved → %s", imgResult.Path))
 	fmt.Println()
 
 	// Stage 2: Generate 3D model via Hunyuan3D
 	t = display.StageStart("Generating 3D model via Hunyuan3D...")
-	modelPath, err := provider.GenerateModel(ctx, hunyuanSecretID, hunyuanSecretKey, imagePath, workDir)
+	modelPath, err := provider.GenerateModel(ctx, hunyuanSecretID, hunyuanSecretKey, imgResult.Path, imgResult.URL, workDir)
 	if err != nil {
 		display.Error(err.Error())
 		return err
