@@ -25,16 +25,18 @@ $ huragok create "futuristic assault rifle, angular design, matte black with blu
 
 huragok refines your prompt, shows you what it came up with — you approve it. It generates concept art — a clean side-view of the rifle. Looks good, you accept. It sends that to Hunyuan3D, waits about a minute, and drops a 48k-face mesh on disk. You inspect it in the review UI (`huragok review`), approve, and it decimates it down to 8k faces and writes `static/assault_rifle.glb`. Total time: ~2 minutes. Cost: ~$0.15.
 
-### "Claude, add an energy sword to the arena"
+### "Claude, add a new prop to the arena"
 
-You're working in Claude Code on your game project. You tell Claude you want a new melee weapon. Claude knows about the huragok skill, so it runs:
+You're working in Claude Code on your game project. You tell Claude you want a new asset. Claude knows about the `huragok` skill, so it runs:
 
 ```bash
-huragok create "Halo-style energy sword, glowing plasma blade, alien hilt" \
-  --auto --output static/energy_sword.glb --json
+huragok create "alien energy blade, glowing plasma edge, ornate hilt, fantasy game prop" \
+  --output static/energy_blade.glb
 ```
 
-Claude parses the JSON response, confirms the model was generated (8k faces, 1.8 MB), then wires it into the game code — imports the GLB, adds it to the weapon system, and sets up the melee logic. You never left your editor.
+Claude waits for the pipeline to complete (~2 minutes), confirms the .glb was generated, then wires it into the game code — imports the GLB, adds it to the scene, and sets up the logic. You never left your editor.
+
+`huragok` ships with a [Claude Code skill file](skills/huragok.md) that teaches Claude when and how to invoke the CLI, including prompt guidelines and content filter workarounds. Copy it to your project's `.claude/skills/` directory to enable this workflow.
 
 ### "The crate model looks bad, I want to try a different provider"
 
