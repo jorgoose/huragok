@@ -1,6 +1,13 @@
-# huragok
+<p align="center">
+  <img src="huragok.png" alt="huragok logo" width="280" />
+</p>
 
-A CLI tool for AI-powered 3D asset generation. Named after the [Huragok](https://www.halopedia.org/Huragok) (Engineers) from Halo — creatures that can fabricate complex objects seemingly out of thin air.
+<h1 align="center">huragok</h1>
+
+<p align="center">
+  A CLI tool for AI-powered 3D asset generation.<br>
+  Named after the <a href="https://www.halopedia.org/Huragok">Huragok</a> (Engineers) from Halo — creatures that can fabricate complex objects seemingly out of thin air.
+</p>
 
 huragok wraps the fragmented workflow of going from a text description to a game-ready 3D model into a single, reproducible pipeline. It works interactively at the terminal, or headlessly as part of an AI agent or CI workflow.
 
