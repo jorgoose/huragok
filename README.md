@@ -260,10 +260,11 @@ This stage is **skipped entirely** in `--pipeline direct` mode.
 - **`sheet`** — generates a single turnaround/model-sheet style image with multiple angles composed into one frame. Some 3D providers handle these well.
 
 An important nuance: generating separate images from separate prompts produces inconsistent results (four different-looking crates). True multi-angle requires either:
-1. Generating one hero image, then deriving consistent views from it via a multi-view model
-2. Generating a turnaround sheet in a single image
+1. Generating one hero image, then using a model with strong editing capabilities (e.g., OpenAI's GPT-image-1, Nana Banana Pro) to produce consistent rotated views of the same object — these models can take the original image as a reference and re-render it from a different angle while preserving identity
+2. Using a dedicated multi-view synthesis model (e.g., Zero123++, SV3D) to derive views from the hero image
+3. Generating a turnaround sheet in a single image
 
-huragok handles this automatically based on the selected mode.
+huragok handles this automatically based on the selected mode and available providers.
 
 **Provider options:** OpenAI (DALL-E / gpt-image-1), Stability AI, or manual upload.
 
