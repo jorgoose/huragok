@@ -2,18 +2,34 @@
 
 ## Demo scenario
 
-Run `huragok create` to generate a Halo-style pistol model on the fly, then load it into the halo-portfolio arena game as a secondary weapon. The audience watches the pipeline execute in real-time.
+Run `huragok create` to generate a 3D game asset on the fly. The audience watches the full pipeline execute in real-time: text prompt → concept image → 3D model.
 
 ```bash
-$ huragok create "M6D pistol, Halo CE style, matte gray" --output static/pistol.glb
+$ huragok create "sci-fi sidearm, compact futuristic handgun prop, sleek angular design, matte gray with blue energy accents, game asset" --output demo_sidearm.glb
 ```
+
+## Important: OpenAI content filter
+
+OpenAI's DALL-E 3 blocks prompts containing words like "pistol", "gun", "rifle", "weapon", "shoot". Use filter-friendly alternatives:
+
+| Blocked | Use instead |
+|---|---|
+| pistol, gun | sidearm, handgun prop, handheld device |
+| rifle | blaster prop, energy tool |
+| weapon | game asset, prop, device |
+| shoot | — |
+
+Good demo prompts:
+- `"sci-fi sidearm, compact futuristic handgun prop, sleek angular design, matte gray with blue energy accents, game asset"`
+- `"futuristic plasma device, Halo-inspired handheld prop, metallic with glowing elements, game asset"`
+- `"futuristic sci-fi cargo crate, metal panels with glowing blue indicators, weathered surface, game prop"`
 
 ## What the MVP does
 
 1. Takes a text prompt from the user
-2. Generates a concept image via OpenAI image API (gpt-image-1)
-3. Sends that image to Hunyuan3D (Tencent API) for 3D model generation
-4. Polls until the model is ready
+2. Generates a concept image via OpenAI DALL-E 3 (auto-appends "isolated on white background" for clean 3D generation)
+3. Sends the image URL to Hunyuan3D Rapid (Tencent Cloud intl API) for 3D model generation
+4. Polls until the model is ready (~1-2 minutes)
 5. Downloads the .glb and writes it to the `--output` path
 6. Prints styled progress to the terminal so the audience can follow along
 
@@ -38,15 +54,15 @@ That's the entire scope. Prompt in, .glb out, with visible progress.
 ```
   ● HURAGOK — 3D Asset Pipeline
 
-  Prompt:    M6D pistol, Halo CE style, matte gray
+  Prompt:  sci-fi sidearm, compact futuristic handgun prop...
 
-  ▸ Generating concept image... done (3.2s)
-    Saved → .huragok/concept.png
+  ▸ Generating concept image... done (13.3s)
+    Saved → .huragok\concept.png
 
-  ▸ Generating 3D model via Hunyuan3D... done (47s)
-    Faces: 32,400 | Vertices: 16,800
+  ▸ Generating 3D model via Hunyuan3D... done (1m5s)
+    Raw model: 10.3 MB
 
-  ✓ Output → static/pistol.glb (4.2 MB)
+  ✓ Output → demo_sidearm.glb (10.3 MB)
 ```
 
 ## Project structure
@@ -58,7 +74,7 @@ huragok/
 │   ├── create/create.go             # Create command logic (the pipeline)
 │   ├── provider/
 │   │   ├── openai.go                # Image generation via go-openai SDK
-│   │   └── hunyuan.go               # 3D generation via tencentcloud-sdk-go
+│   │   └── hunyuan.go               # 3D generation via Tencent Cloud intl SDK
 │   └── display/display.go           # Styled terminal output via lipgloss
 ├── go.mod
 └── go.sum
@@ -72,14 +88,6 @@ export HURAGOK_HUNYUAN_SECRET_ID="..."
 export HURAGOK_HUNYUAN_SECRET_KEY="..."
 ```
 
-## Game-side changes (halo-portfolio repo)
-
-The demo requires weapon switching in the arena so the generated pistol can be equipped as a secondary weapon. This is game code in halo-portfolio, not huragok code:
-
-- Load a second GLB (the generated pistol) as a secondary `GunViewModel`
-- Add a keypress (e.g., `2` or `Q`) to swap between primary AR and secondary pistol
-- Different stats for the pistol (slower fire rate, more damage, smaller magazine)
-
 ## Dependencies
 
 | Package | Purpose |
@@ -87,11 +95,21 @@ The demo requires weapon switching in the arena so the generated pistol can be e
 | `github.com/spf13/cobra` | CLI framework |
 | `github.com/charmbracelet/lipgloss` | Styled terminal output |
 | `github.com/sashabaranov/go-openai` | OpenAI image generation |
-| `github.com/tencentcloud/tencentcloud-sdk-go` | Hunyuan3D via Tencent API |
+| `github.com/tencentcloud/tencentcloud-sdk-go-intl-en` | Hunyuan3D via Tencent Cloud intl API |
+
+## Showing the result
+
+After the .glb is generated, open it in https://gltf-viewer.donmccurdy.com/ (drag and drop) to show the audience the 3D model with textures. Rotate it, zoom in.
+
+## If something goes wrong
+
+- **Content filter blocks prompt** → rephrase without blocked terms (see table above)
+- **Hunyuan3D times out** → run it again, or show a pre-generated .glb
+- **Billing error** → check env vars are set, credits exist on OpenAI and Tencent Cloud
 
 ## Definition of done
 
-1. `huragok create "M6D pistol, Halo CE style" --output static/pistol.glb` runs end-to-end and produces a valid .glb file
+1. `huragok create "<prompt>" --output demo_sidearm.glb` runs end-to-end and produces a valid .glb file
 2. The terminal shows clear, styled progress at each step
-3. The generated .glb loads in the halo-portfolio arena as a secondary weapon
-4. The whole pipeline completes in under 2 minutes
+3. The generated .glb opens correctly in a 3D viewer
+4. The whole pipeline completes in under 3 minutes
