@@ -78,13 +78,18 @@ func Run(ctx context.Context, prompt, outputPath string) error {
 		return fmt.Errorf("writing output: %w", err)
 	}
 
-	outStat, _ := os.Stat(outputPath)
+	absPath, err := filepath.Abs(outputPath)
+	if err != nil {
+		absPath = outputPath
+	}
+
+	outStat, _ := os.Stat(absPath)
 	sizeMB := float64(0)
 	if outStat != nil {
 		sizeMB = float64(outStat.Size()) / (1024 * 1024)
 	}
 
-	display.Success(outputPath, sizeMB)
+	display.Success(absPath, sizeMB)
 
 	return nil
 }
