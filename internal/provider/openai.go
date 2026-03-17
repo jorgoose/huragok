@@ -8,9 +8,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 )
+
+const maxImageRetries = 3
 
 // ImageResult holds both the local file path and the remote URL of the generated image.
 type ImageResult struct {
@@ -26,15 +30,30 @@ func GenerateImage(ctx context.Context, apiKey, prompt, outDir string) (*ImageRe
 	// Append 3D-optimized suffix for cleaner model generation
 	enhancedPrompt := prompt + ", single object, centered, isolated on plain white background, product photography style, no text"
 
-	resp, err := client.CreateImage(ctx, openai.ImageRequest{
-		Prompt:         enhancedPrompt,
-		Model:          openai.CreateImageModelDallE3,
-		N:              1,
-		Size:           openai.CreateImageSize1024x1024,
-		ResponseFormat: openai.CreateImageResponseFormatURL,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("openai image generation: %w", err)
+	var resp openai.ImageResponse
+	var lastErr error
+	for attempt := 0; attempt < maxImageRetries; attempt++ {
+		resp, lastErr = client.CreateImage(ctx, openai.ImageRequest{
+			Prompt:         enhancedPrompt,
+			Model:          openai.CreateImageModelDallE3,
+			N:              1,
+			Size:           openai.CreateImageSize1024x1024,
+			ResponseFormat: openai.CreateImageResponseFormatURL,
+		})
+		if lastErr == nil {
+			break
+		}
+		// Retry only on content filter errors (non-deterministic)
+		if !strings.Contains(lastErr.Error(), "content") {
+			return nil, fmt.Errorf("openai image generation: %w", lastErr)
+		}
+		if attempt < maxImageRetries-1 {
+			fmt.Printf(" (content filter, retrying %d/%d...)", attempt+2, maxImageRetries)
+			time.Sleep(2 * time.Second)
+		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("openai image generation: %w", lastErr)
 	}
 
 	if len(resp.Data) == 0 {
