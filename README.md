@@ -13,6 +13,108 @@ huragok wraps the fragmented workflow of going from a text description to a game
 
 ---
 
+## Quick start
+
+### 1. Set environment variables
+
+```bash
+export HURAGOK_OPENAI_KEY="sk-..."
+export HURAGOK_HUNYUAN_SECRET_ID="..."
+export HURAGOK_HUNYUAN_SECRET_KEY="..."
+```
+
+### 2. Build
+
+```bash
+go build ./cmd/huragok/
+```
+
+### 3. Run
+
+```bash
+./huragok create "futuristic sci-fi cargo crate, metal panels with glowing blue indicators, game prop" --output my_asset.glb
+```
+
+The pipeline runs automatically: concept image (~12s) → 3D model (~1-2 min) → .glb file.
+
+### Content filter note
+
+OpenAI's DALL-E 3 blocks certain terms. Avoid: "pistol", "gun", "rifle", "weapon". Use instead: "sidearm", "handgun prop", "blaster prop", "energy device", "game asset". The tool retries automatically up to 3 times on content filter false positives.
+
+---
+
+## Demo walkthrough
+
+Step-by-step guide for demoing huragok live.
+
+### Before the demo
+
+1. Open a terminal in the huragok project directory
+2. Make sure env vars are exported (see Quick start above)
+3. Have a browser tab open with [glTF Viewer](https://gltf-viewer.donmccurdy.com/) for showing results
+4. Have a browser tab open with the [GitHub repo](https://github.com/jorgoose/huragok) as reference
+
+### Run the demo
+
+**Step 1 — kick off the pipeline.** Type the command and hit enter:
+
+```bash
+./huragok create "sci-fi sidearm, compact futuristic handgun prop, sleek angular design, matte gray with blue energy accents, game asset" --output demo_sidearm.glb
+```
+
+The audience sees:
+```
+  ● HURAGOK — 3D Asset Pipeline
+
+  Prompt:  sci-fi sidearm, compact futuristic handgun prop...
+
+  ▸ Generating concept image... done (13.3s)
+    Saved → .huragok\concept.png
+```
+
+**Step 2 — talk while Hunyuan3D generates (~1-2 min).** Explain what's happening:
+- "This is huragok — a Go CLI that wraps the full text-to-3D pipeline into one command"
+- "Step 1 just happened — sent the prompt to DALL-E 3 and got a concept image back"
+- "Step 2 is running now — that image was sent to Tencent's Hunyuan3D API which generates a textured 3D mesh from it"
+- "The tool is designed to be called by AI coding agents — Claude Code can invoke it as a skill to generate game assets on the fly"
+- "Built in Go for instant startup and single-binary distribution"
+
+**Step 3 — model lands.** Terminal shows completion:
+```
+  ▸ Generating 3D model via Hunyuan3D... done (1m5s)
+    Raw model: 10.3 MB
+
+  ✓ Output → demo_sidearm.glb (10.3 MB)
+```
+
+**Step 4 — show the result.** Drag `demo_sidearm.glb` into the glTF Viewer browser tab. Rotate the model, zoom in, show the textures.
+
+**Step 5 (optional) — show the concept image.** Open `.huragok/concept.png` to show the intermediate DALL-E 3 image that produced the 3D model.
+
+### If something goes wrong
+
+- **Content filter blocks the prompt** — the tool auto-retries up to 3 times. If all fail, rephrase using safer terms (see content filter note above)
+- **Hunyuan3D times out** — run it again
+- **Billing error** — check that API credits exist on both OpenAI and Tencent Cloud
+
+### Alternative demo prompts
+
+```bash
+# Cargo crate
+"futuristic sci-fi cargo crate, metal panels with glowing blue indicators, weathered surface, game prop"
+
+# Alien artifact
+"ancient alien artifact, glowing runes, crystalline structure, mysterious game prop"
+
+# Military container
+"military supply container, olive drab, stenciled markings, industrial game prop"
+
+# Sci-fi helmet
+"futuristic combat helmet, angular visor, matte black with blue accents, game asset"
+```
+
+---
+
 ## Usage scenarios
 
 ### "I need a gun model for my game"
