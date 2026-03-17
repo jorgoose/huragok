@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="huragok.png" alt="huragok logo" width="280" />
+  <img src=".github/huragok.png" alt="huragok logo" width="280" />
 </p>
 
 <h1 align="center">huragok</h1>
