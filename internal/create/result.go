@@ -26,6 +26,7 @@ type Options struct {
 	OutputPath string
 	JSON       bool
 	From       string // path to a user-supplied image; bypasses OpenAI
+	WorkDir    string // root for run directories; defaults to ".huragok" when empty
 }
 
 type Result struct {

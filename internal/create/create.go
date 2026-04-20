@@ -58,7 +58,11 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		}
 	}
 
-	run, err := runs.New(".huragok", opts.Prompt, opts.OutputPath)
+	workDir := opts.WorkDir
+	if workDir == "" {
+		workDir = ".huragok"
+	}
+	run, err := runs.New(workDir, opts.Prompt, opts.OutputPath)
 	if err != nil {
 		return finalize(configError(err))
 	}

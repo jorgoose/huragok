@@ -12,7 +12,7 @@ func TestRunMissingOpenAIKey(t *testing.T) {
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "")
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "")
 
-	_, err := Run(context.Background(), Options{Prompt: "test prompt", OutputPath: "output.glb"})
+	_, err := Run(context.Background(), Options{Prompt: "test prompt", OutputPath: "output.glb", WorkDir: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected error when HURAGOK_OPENAI_KEY is missing")
 	}
@@ -33,7 +33,7 @@ func TestRunMissingHunyuanSecretID(t *testing.T) {
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "")
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "")
 
-	_, err := Run(context.Background(), Options{Prompt: "test prompt", OutputPath: "output.glb"})
+	_, err := Run(context.Background(), Options{Prompt: "test prompt", OutputPath: "output.glb", WorkDir: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected error when HURAGOK_HUNYUAN_SECRET_ID is missing")
 	}
@@ -54,7 +54,7 @@ func TestRunMissingHunyuanSecretKey(t *testing.T) {
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "fake-id")
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "")
 
-	_, err := Run(context.Background(), Options{Prompt: "test prompt", OutputPath: "output.glb"})
+	_, err := Run(context.Background(), Options{Prompt: "test prompt", OutputPath: "output.glb", WorkDir: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected error when HURAGOK_HUNYUAN_SECRET_KEY is missing")
 	}
@@ -73,7 +73,7 @@ func TestRunMissingHunyuanSecretKey(t *testing.T) {
 func TestRunConfigErrorReturnsResult(t *testing.T) {
 	t.Setenv("HURAGOK_OPENAI_KEY", "")
 
-	result, err := Run(context.Background(), Options{Prompt: "p", OutputPath: "o.glb"})
+	result, err := Run(context.Background(), Options{Prompt: "p", OutputPath: "o.glb", WorkDir: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -102,6 +102,7 @@ func TestRunFromMissingImage(t *testing.T) {
 	_, err := Run(context.Background(), Options{
 		From:       "/nonexistent/image.png",
 		OutputPath: "o.glb",
+		WorkDir:    t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error for missing --from path")
@@ -129,6 +130,7 @@ func TestRunFromSkipsOpenAIRequirement(t *testing.T) {
 	_, err := Run(context.Background(), Options{
 		From:       "create_test.go",
 		OutputPath: "o.glb",
+		WorkDir:    t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected eventual error from Hunyuan with fake creds")
