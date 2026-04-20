@@ -1,68 +1,141 @@
-# huragok — 3D Asset Generation
+---
+name: huragok
+description: Generate textured 3D models (.glb files) from a text description or reference image. Use when the user asks to create, replace, or update a 3D asset / mesh / prop, or when a project needs a new .glb for a scene, level, or component.
+---
 
-Generate 3D models (.glb) from text descriptions using the huragok CLI.
+# huragok — text-to-3D asset generation
+
+Wraps DALL-E 3 (concept image) + Hunyuan3D (image-to-mesh) into one CLI call. Produces a textured .glb in ~1-2 minutes.
 
 ## When to use
 
-Use this skill when the user asks to:
-- Create, generate, or make a 3D model or game asset
-- Replace or regenerate an existing 3D model
-- Turn a description into a .glb file
+- User asks to create a 3D model, mesh, prop, or game asset
+- A scene/level/game needs a new `.glb` file
+- An existing `.glb` needs to be replaced or regenerated
+- User has reference art and wants it converted to 3D (use `--from`)
+
+Don't use this skill for:
+- 2D images (use image generation tools)
+- Editing an existing `.glb` (huragok generates from scratch)
+- Composing multiple objects into a scene (huragok produces single objects)
 
 ## Prerequisites
 
-The following environment variables must be set:
-- `HURAGOK_OPENAI_KEY` — OpenAI API key (for concept image generation)
+These environment variables must be set before invoking:
+
+- `HURAGOK_OPENAI_KEY` — OpenAI API key (needed for prompt-driven generation; not needed when using `--from`)
 - `HURAGOK_HUNYUAN_SECRET_ID` — Tencent Cloud SecretId
 - `HURAGOK_HUNYUAN_SECRET_KEY` — Tencent Cloud SecretKey
 
-If any are missing, tell the user which ones need to be set.
+If any are missing, the tool exits with code 2 and a clear message — surface it to the user.
 
-## Usage
+## How to invoke
+
+Always use `--json` so you can parse the result. Always pass `--output` so the file lands at a known path.
 
 ```bash
-huragok create "<prompt>" --output <path>
+huragok create "<description>" --output <path> --json
 ```
 
-The pipeline runs automatically: text prompt → concept image (DALL-E 3) → 3D model (Hunyuan3D) → .glb file. Takes ~1-3 minutes total.
+With a reference image (skips OpenAI; halves cost; sidesteps the content filter):
 
-## Writing prompts
+```bash
+huragok create --from <image-path> --output <path> --json
+```
 
-The prompt is sent to OpenAI DALL-E 3 for concept image generation. The tool auto-appends "single object, centered, isolated on plain white background, product photography style, no text" — you do NOT need to add this yourself.
+Don't poll. The command runs synchronously for ~1-2 minutes and prints one JSON object on completion.
 
-**Content filter:** OpenAI blocks certain terms. You MUST avoid these words in prompts:
-- BLOCKED: pistol, gun, rifle, weapon, shoot, bullet, ammunition
-- USE INSTEAD: sidearm, handgun prop, blaster prop, energy device, handheld prop, game asset
+## Parsing the output
 
-Good prompt examples:
+stdout receives exactly one JSON object on success or failure:
+
+```json
+{
+  "run_id": "2026-04-19_134522_a3f8c2",
+  "status": "complete",
+  "stages": {
+    "image":   {"status": "complete", "elapsed_ms": 13300},
+    "model3d": {"status": "complete", "elapsed_ms": 65200}
+  },
+  "output": "/abs/path/to/output.glb",
+  "elapsed_seconds": 78.5
+}
+```
+
+On failure, `status` is `"failed"` and an `error` envelope is included:
+
+```json
+{
+  "run_id": "...",
+  "status": "failed",
+  "stages": {"image": {"status": "failed", "elapsed_ms": 4200}},
+  "elapsed_seconds": 4.2,
+  "error": {
+    "stage": "image",
+    "message": "openai: 429 Too Many Requests"
+  }
+}
+```
+
+After a successful run, confirm the file exists at `output` before reporting success to the user.
+
+## Exit codes
+
+| Code | Meaning | What to do |
+|------|---------|------------|
+| 0 | Success | Use the file at `output` |
+| 1 | Stage failed (provider error, mesh generation rejected) | Surface `error.message`; consider rephrasing the prompt |
+| 2 | Configuration error (missing env var, missing argument, bad `--from` path) | Surface to user — they need to fix something |
+| 3 | Network/API error (timeout, rate limit, 5xx) | Safe to retry once with backoff |
+| 4 | User cancelled | Don't retry |
+
+## Content filter workarounds
+
+OpenAI's DALL-E 3 blocks certain terms. The tool auto-retries 3 times on suspected false positives, but some words trigger the filter consistently. Avoid in prompts:
+
+| Avoid       | Use instead                          |
+|-------------|--------------------------------------|
+| pistol, gun | sidearm, handgun prop                |
+| rifle       | sci-fi rifle prop, blaster prop      |
+| weapon      | game asset, prop, energy device      |
+| knife       | blade, ceremonial dagger prop        |
+| shoot, bullet, ammunition | (rephrase to describe the object, not its function) |
+
+If the filter still blocks the prompt, fall back to `--from <image>` with reference art the user provides.
+
+## Prompt style
+
+The tool auto-appends "single object, centered, isolated on plain white background, product photography style, no text" — don't add this yourself.
+
+Effective prompts mention: object type, materials/finish, color palette, style adjective, and the words "game prop" or "game asset" at the end.
+
+Examples:
 - `"sci-fi sidearm, compact futuristic handgun prop, sleek angular design, matte gray with blue energy accents, game asset"`
 - `"futuristic sci-fi cargo crate, metal panels with glowing blue indicators, weathered surface, game prop"`
 - `"alien energy blade, glowing plasma edge, ornate hilt, fantasy game prop"`
-- `"military supply container, olive drab, stenciled markings, industrial game prop"`
 
-## Intermediate artifacts
+## Run artifacts
 
-The tool creates a `.huragok/` directory in the current working directory containing:
-- `concept.png` — the DALL-E 3 concept image used for 3D generation
-- `model_raw.glb` — the raw model before copying to --output
+Every invocation writes to `.huragok/runs/<run-id>/` with `meta.json`, `prompt.txt`, `concept.png`, `model_raw.glb`, `model_final.glb`. The `--output` path receives a copy of `model_final.glb`. The run dir is preserved across invocations — don't delete it without the user's say-so.
 
-## Error handling
+## Examples
 
-- **Content filter error** → rephrase the prompt using the safe terms above
-- **Billing/credit error** → tell the user to check their OpenAI or Tencent Cloud billing
-- **Timeout** → run the command again, Hunyuan3D occasionally takes longer under load
-- **Invalid GLB** → this should not happen with the Rapid endpoint; if it does, retry
-
-## Example
-
-User: "Make me a sci-fi crate model"
+User: "Make me an energy sword model for the game."
 
 ```bash
-huragok create "futuristic sci-fi cargo crate, metal panels with glowing blue indicators, weathered surface, game prop" --output static/cargo_crate.glb
+huragok create "Halo energy sword, glowing plasma blade, ornate hilt, game prop" \
+  --output static/energy_sword.glb --json
 ```
 
-Then verify the output:
+User: "Replace the cargo crate with something more weathered."
+
 ```bash
-# Check it's a valid GLB (should start with "glTF")
-xxd static/cargo_crate.glb | head -1
+huragok create "heavily weathered military cargo crate, dented metal panels, rust stains, game prop" \
+  --output static/cargo_box.glb --json
+```
+
+User has reference art on disk and wants a 3D version:
+
+```bash
+huragok create --from concept.png --output static/asset.glb --json
 ```

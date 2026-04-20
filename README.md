@@ -599,29 +599,16 @@ huragok create "cargo crate, sci-fi military" \
 
 ### Claude Code skill integration
 
-huragok is designed to be exposed to Claude Code as a skill. A skill file (`.claude/skills/huragok.md`) teaches the agent when and how to invoke the CLI:
+huragok ships with a Claude Code skill at [`skills/huragok.md`](skills/huragok.md). The skill teaches Claude when to invoke the CLI, how to parse the JSON output, what each exit code means, and how to work around the DALL-E content filter.
 
-```markdown
-# huragok — 3D asset generation
+To install:
 
-## When to use
-When the user asks to create, replace, regenerate, or update a 3D model (.glb),
-texture, or visual asset for the project.
-
-## How to use
-Run via Bash in headless mode:
-
-  huragok create "<description>" --auto --output <path> --json
-
-Parse the JSON output to confirm success and report the result to the user.
-If generation fails, check the run logs and suggest adjustments.
-
-## Examples
-- "make me an energy sword model" →
-  huragok create "Halo energy sword, glowing plasma blade" --auto --output static/energy_sword.glb --json
-- "replace the cargo crate with something more weathered" →
-  huragok create "heavily weathered military cargo crate, dented panels, rust" --auto --output static/cargo_box.glb --json
+```bash
+mkdir -p .claude/skills
+cp skills/huragok.md .claude/skills/
 ```
+
+Once installed, Claude Code will automatically invoke huragok when the user asks for a 3D model, mesh, or game asset.
 
 ### Cost awareness
 
