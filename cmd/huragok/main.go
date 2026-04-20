@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -16,27 +17,45 @@ func main() {
 	}
 
 	createCmd := &cobra.Command{
-		Use:   "create [prompt]",
-		Short: "Generate a 3D model from a text description",
-		Args:  cobra.ExactArgs(1),
+		Use:           "create [prompt]",
+		Short:         "Generate a 3D model from a text description",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			output, err := cmd.Flags().GetString("output")
-			if err != nil {
-				return fmt.Errorf("reading --output flag: %w", err)
+			outputPath, _ := cmd.Flags().GetString("output")
+			if outputPath == "" {
+				outputPath = "output.glb"
 			}
-			if output == "" {
-				output = "output.glb"
+			jsonOut, _ := cmd.Flags().GetBool("json")
+
+			result, runErr := create.Run(cmd.Context(), create.Options{
+				Prompt:     args[0],
+				OutputPath: outputPath,
+				JSON:       jsonOut,
+			})
+
+			if jsonOut && result != nil {
+				_ = result.WriteJSON(os.Stdout)
 			}
-			return create.Run(cmd.Context(), args[0], output)
+			if runErr != nil && jsonOut {
+				fmt.Fprintln(os.Stderr, "Error:", runErr)
+			}
+			return runErr
 		},
 	}
 
 	createCmd.Flags().StringP("output", "o", "", "output path for the generated .glb file")
+	createCmd.Flags().Bool("json", false, "print structured JSON result to stdout")
 
 	root.AddCommand(createCmd)
 
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		var pe *create.PipelineError
+		if errors.As(err, &pe) {
+			os.Exit(pe.Code)
+		}
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(create.ExitConfig)
 	}
 }

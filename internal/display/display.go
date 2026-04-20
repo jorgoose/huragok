@@ -2,6 +2,7 @@ package display
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -64,7 +65,7 @@ func Success(path string, sizeMB float64) {
 	)
 }
 
-// Error prints an error message.
+// Error prints an error message to stderr.
 func Error(msg string) {
-	fmt.Printf("\n  %s %s\n\n", errorStyle.Render("✗ Error:"), msg)
+	fmt.Fprintf(os.Stderr, "\n  %s %s\n\n", errorStyle.Render("✗ Error:"), msg)
 }

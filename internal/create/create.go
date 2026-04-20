@@ -12,94 +12,135 @@ import (
 	"github.com/jorgoose/huragok/internal/runs"
 )
 
-// Run executes the full create pipeline: image generation → 3D model generation.
-func Run(ctx context.Context, prompt, outputPath string) error {
+// Run executes the create pipeline. Returns a Result describing what happened
+// (always non-nil) and a *PipelineError on failure whose Code maps to the
+// process exit code.
+func Run(ctx context.Context, opts Options) (*Result, error) {
+	started := time.Now()
+	result := &Result{Stages: map[string]StageBrief{}}
+
+	finalize := func(err error) (*Result, error) {
+		result.ElapsedSeconds = time.Since(started).Seconds()
+		if err != nil {
+			result.Status = StatusFailed
+			pe, ok := err.(*PipelineError)
+			if !ok {
+				pe = &PipelineError{Code: ExitStage, Stage: "unknown", Err: err}
+			}
+			result.Error = &ResultError{Stage: pe.Stage, Message: pe.Err.Error()}
+			if !opts.JSON {
+				display.Error(pe.Err.Error())
+			}
+			return result, pe
+		}
+		result.Status = StatusComplete
+		return result, nil
+	}
+
 	openaiKey := os.Getenv("HURAGOK_OPENAI_KEY")
 	if openaiKey == "" {
-		return fmt.Errorf("HURAGOK_OPENAI_KEY environment variable is required")
+		return finalize(configError(fmt.Errorf("HURAGOK_OPENAI_KEY environment variable is required")))
 	}
 	hunyuanSecretID := os.Getenv("HURAGOK_HUNYUAN_SECRET_ID")
 	if hunyuanSecretID == "" {
-		return fmt.Errorf("HURAGOK_HUNYUAN_SECRET_ID environment variable is required")
+		return finalize(configError(fmt.Errorf("HURAGOK_HUNYUAN_SECRET_ID environment variable is required")))
 	}
 	hunyuanSecretKey := os.Getenv("HURAGOK_HUNYUAN_SECRET_KEY")
 	if hunyuanSecretKey == "" {
-		return fmt.Errorf("HURAGOK_HUNYUAN_SECRET_KEY environment variable is required")
+		return finalize(configError(fmt.Errorf("HURAGOK_HUNYUAN_SECRET_KEY environment variable is required")))
 	}
 
-	outDir := filepath.Dir(outputPath)
+	outDir := filepath.Dir(opts.OutputPath)
 	if outDir != "" && outDir != "." {
 		if err := os.MkdirAll(outDir, 0o755); err != nil {
-			return fmt.Errorf("creating output directory: %w", err)
+			return finalize(configError(fmt.Errorf("creating output directory: %w", err)))
 		}
 	}
 
-	run, err := runs.New(".huragok", prompt, outputPath)
+	run, err := runs.New(".huragok", opts.Prompt, opts.OutputPath)
 	if err != nil {
-		return err
+		return finalize(configError(err))
 	}
+	result.RunID = run.Meta.RunID
 
-	display.Header()
-	display.Prompt(prompt)
-	display.RunID(run.Meta.RunID)
+	if !opts.JSON {
+		display.Header()
+		display.Prompt(opts.Prompt)
+		display.RunID(run.Meta.RunID)
+	}
 
 	// Stage 1: concept image
-	t := display.StageStart("Generating concept image...")
-	imgResult, err := provider.GenerateImage(ctx, openaiKey, prompt, run.Dir())
-	if err != nil {
-		_ = run.MarkStage("image", runs.StatusFailed, time.Since(t), err)
-		_ = run.SetStatus(runs.StatusFailed)
-		display.Error(err.Error())
-		return err
+	imgStart := time.Now()
+	if !opts.JSON {
+		display.StageStart("Generating concept image...")
 	}
-	_ = run.MarkStage("image", runs.StatusComplete, time.Since(t), nil)
-	display.StageDone(t)
-	display.StageInfo(fmt.Sprintf("Saved → %s", imgResult.Path))
-	fmt.Println()
+	imgResult, err := provider.GenerateImage(ctx, openaiKey, opts.Prompt, run.Dir())
+	imgElapsed := time.Since(imgStart)
+	if err != nil {
+		_ = run.MarkStage("image", runs.StatusFailed, imgElapsed, err)
+		_ = run.SetStatus(runs.StatusFailed)
+		result.Stages["image"] = StageBrief{Status: StatusFailed, ElapsedMs: imgElapsed.Milliseconds()}
+		return finalize(stageError("image", err))
+	}
+	_ = run.MarkStage("image", runs.StatusComplete, imgElapsed, nil)
+	result.Stages["image"] = StageBrief{Status: StatusComplete, ElapsedMs: imgElapsed.Milliseconds()}
+	if !opts.JSON {
+		display.StageDone(imgStart)
+		display.StageInfo(fmt.Sprintf("Saved → %s", imgResult.Path))
+		fmt.Println()
+	}
 
 	// Stage 2: 3D model
-	t = display.StageStart("Generating 3D model via Hunyuan3D...")
-	modelPath, err := provider.GenerateModel(ctx, hunyuanSecretID, hunyuanSecretKey, imgResult.Path, imgResult.URL, run.Dir())
-	if err != nil {
-		_ = run.MarkStage("model3d", runs.StatusFailed, time.Since(t), err)
-		_ = run.SetStatus(runs.StatusFailed)
-		display.Error(err.Error())
-		return err
+	modStart := time.Now()
+	if !opts.JSON {
+		display.StageStart("Generating 3D model via Hunyuan3D...")
 	}
-	_ = run.MarkStage("model3d", runs.StatusComplete, time.Since(t), nil)
-	display.StageDone(t)
-
-	if stat, err := os.Stat(modelPath); err == nil {
-		display.StageInfo(fmt.Sprintf("Raw model: %.1f MB", float64(stat.Size())/(1024*1024)))
+	modelPath, err := provider.GenerateModel(ctx, hunyuanSecretID, hunyuanSecretKey, imgResult.Path, imgResult.URL, run.Dir())
+	modElapsed := time.Since(modStart)
+	if err != nil {
+		_ = run.MarkStage("model3d", runs.StatusFailed, modElapsed, err)
+		_ = run.SetStatus(runs.StatusFailed)
+		result.Stages["model3d"] = StageBrief{Status: StatusFailed, ElapsedMs: modElapsed.Milliseconds()}
+		return finalize(stageError("model3d", err))
+	}
+	_ = run.MarkStage("model3d", runs.StatusComplete, modElapsed, nil)
+	result.Stages["model3d"] = StageBrief{Status: StatusComplete, ElapsedMs: modElapsed.Milliseconds()}
+	if !opts.JSON {
+		display.StageDone(modStart)
+		if stat, statErr := os.Stat(modelPath); statErr == nil {
+			display.StageInfo(fmt.Sprintf("Raw model: %.1f MB", float64(stat.Size())/(1024*1024)))
+		}
 	}
 
 	// Copy raw → final inside the run dir, and to the user-supplied output path.
-	// final.glb is byte-identical to raw.glb today; the named slot is reserved
-	// for postprocessing output once that lands.
 	modelData, err := os.ReadFile(modelPath)
 	if err != nil {
-		return fmt.Errorf("reading model: %w", err)
+		return finalize(stageError("io", fmt.Errorf("reading model: %w", err)))
 	}
 	finalInRun := filepath.Join(run.Dir(), "model_final.glb")
 	if err := os.WriteFile(finalInRun, modelData, 0o644); err != nil {
-		return fmt.Errorf("writing final model in run dir: %w", err)
+		return finalize(stageError("io", fmt.Errorf("writing final model in run dir: %w", err)))
 	}
-	if err := os.WriteFile(outputPath, modelData, 0o644); err != nil {
-		return fmt.Errorf("writing output: %w", err)
+	if err := os.WriteFile(opts.OutputPath, modelData, 0o644); err != nil {
+		return finalize(stageError("io", fmt.Errorf("writing output: %w", err)))
 	}
 
 	_ = run.SetStatus(runs.StatusComplete)
 
-	absPath, err := filepath.Abs(outputPath)
-	if err != nil {
-		absPath = outputPath
+	absPath, absErr := filepath.Abs(opts.OutputPath)
+	if absErr != nil {
+		absPath = opts.OutputPath
 	}
-	outStat, _ := os.Stat(absPath)
-	sizeMB := float64(0)
-	if outStat != nil {
-		sizeMB = float64(outStat.Size()) / (1024 * 1024)
-	}
-	display.Success(absPath, sizeMB)
+	result.Output = absPath
 
-	return nil
+	if !opts.JSON {
+		outStat, _ := os.Stat(absPath)
+		sizeMB := float64(0)
+		if outStat != nil {
+			sizeMB = float64(outStat.Size()) / (1024 * 1024)
+		}
+		display.Success(absPath, sizeMB)
+	}
+
+	return finalize(nil)
 }
