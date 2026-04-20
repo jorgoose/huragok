@@ -29,7 +29,12 @@ func Header() {
 
 // Prompt prints the user's prompt.
 func Prompt(prompt string) {
-	fmt.Printf("  %s  %s\n\n", labelStyle.Render("Prompt:"), prompt)
+	fmt.Printf("  %s  %s\n", labelStyle.Render("Prompt:"), prompt)
+}
+
+// RunID prints the run identifier and a trailing blank line.
+func RunID(id string) {
+	fmt.Printf("  %s     %s\n\n", labelStyle.Render("Run:"), dimStyle.Render(id))
 }
 
 // StageStart prints a stage starting message and returns the start time.
