@@ -37,8 +37,9 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		return result, nil
 	}
 
+	// OpenAI is only required when generating a concept image — --from skips it.
 	openaiKey := os.Getenv("HURAGOK_OPENAI_KEY")
-	if openaiKey == "" {
+	if opts.From == "" && openaiKey == "" {
 		return finalize(configError(fmt.Errorf("HURAGOK_OPENAI_KEY environment variable is required")))
 	}
 	hunyuanSecretID := os.Getenv("HURAGOK_HUNYUAN_SECRET_ID")
@@ -65,29 +66,53 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 
 	if !opts.JSON {
 		display.Header()
-		display.Prompt(opts.Prompt)
+		if opts.Prompt != "" {
+			display.Prompt(opts.Prompt)
+		}
 		display.RunID(run.Meta.RunID)
 	}
 
-	// Stage 1: concept image
-	imgStart := time.Now()
-	if !opts.JSON {
-		display.StageStart("Generating concept image...")
-	}
-	imgResult, err := provider.GenerateImage(ctx, openaiKey, opts.Prompt, run.Dir())
-	imgElapsed := time.Since(imgStart)
-	if err != nil {
-		_ = run.MarkStage("image", runs.StatusFailed, imgElapsed, err)
-		_ = run.SetStatus(runs.StatusFailed)
-		result.Stages["image"] = StageBrief{Status: StatusFailed, ElapsedMs: imgElapsed.Milliseconds()}
-		return finalize(stageError("image", err))
-	}
-	_ = run.MarkStage("image", runs.StatusComplete, imgElapsed, nil)
-	result.Stages["image"] = StageBrief{Status: StatusComplete, ElapsedMs: imgElapsed.Milliseconds()}
-	if !opts.JSON {
-		display.StageDone(imgStart)
-		display.StageInfo(fmt.Sprintf("Saved → %s", imgResult.Path))
-		fmt.Println()
+	// Stage 1: concept image — either generate via OpenAI or use --from.
+	var imgResult *provider.ImageResult
+	if opts.From != "" {
+		_ = run.SetImageSource("user")
+		dst := filepath.Join(run.Dir(), "concept.png")
+		src, err := os.ReadFile(opts.From)
+		if err != nil {
+			return finalize(configError(fmt.Errorf("reading --from image %s: %w", opts.From, err)))
+		}
+		if err := os.WriteFile(dst, src, 0o644); err != nil {
+			return finalize(stageError("io", fmt.Errorf("copying user image to run dir: %w", err)))
+		}
+		imgResult = &provider.ImageResult{Path: dst}
+		_ = run.MarkStage("image", runs.StatusComplete, 0, nil)
+		result.Stages["image"] = StageBrief{Status: StatusComplete, ElapsedMs: 0}
+		if !opts.JSON {
+			display.StageInfo(fmt.Sprintf("Using image → %s", dst))
+			fmt.Println()
+		}
+	} else {
+		_ = run.SetImageSource("openai")
+		imgStart := time.Now()
+		if !opts.JSON {
+			display.StageStart("Generating concept image...")
+		}
+		var err error
+		imgResult, err = provider.GenerateImage(ctx, openaiKey, opts.Prompt, run.Dir())
+		imgElapsed := time.Since(imgStart)
+		if err != nil {
+			_ = run.MarkStage("image", runs.StatusFailed, imgElapsed, err)
+			_ = run.SetStatus(runs.StatusFailed)
+			result.Stages["image"] = StageBrief{Status: StatusFailed, ElapsedMs: imgElapsed.Milliseconds()}
+			return finalize(stageError("image", err))
+		}
+		_ = run.MarkStage("image", runs.StatusComplete, imgElapsed, nil)
+		result.Stages["image"] = StageBrief{Status: StatusComplete, ElapsedMs: imgElapsed.Milliseconds()}
+		if !opts.JSON {
+			display.StageDone(imgStart)
+			display.StageInfo(fmt.Sprintf("Saved → %s", imgResult.Path))
+			fmt.Println()
+		}
 	}
 
 	// Stage 2: 3D model

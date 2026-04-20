@@ -19,7 +19,7 @@ func main() {
 	createCmd := &cobra.Command{
 		Use:           "create [prompt]",
 		Short:         "Generate a 3D model from a text description",
-		Args:          cobra.ExactArgs(1),
+		Args:          cobra.RangeArgs(0, 1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -28,11 +28,25 @@ func main() {
 				outputPath = "output.glb"
 			}
 			jsonOut, _ := cmd.Flags().GetBool("json")
+			from, _ := cmd.Flags().GetString("from")
+
+			prompt := ""
+			if len(args) > 0 {
+				prompt = args[0]
+			}
+			if prompt == "" && from == "" {
+				return fmt.Errorf("either a prompt argument or --from <image> is required")
+			}
+			if prompt != "" && from != "" {
+				fmt.Fprintln(os.Stderr, "warning: --from provided, ignoring prompt argument")
+				prompt = ""
+			}
 
 			result, runErr := create.Run(cmd.Context(), create.Options{
-				Prompt:     args[0],
+				Prompt:     prompt,
 				OutputPath: outputPath,
 				JSON:       jsonOut,
+				From:       from,
 			})
 
 			if jsonOut && result != nil {
@@ -47,6 +61,7 @@ func main() {
 
 	createCmd.Flags().StringP("output", "o", "", "output path for the generated .glb file")
 	createCmd.Flags().Bool("json", false, "print structured JSON result to stdout")
+	createCmd.Flags().String("from", "", "use this image instead of generating one with DALL-E")
 
 	root.AddCommand(createCmd)
 

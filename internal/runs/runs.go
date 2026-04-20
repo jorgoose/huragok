@@ -18,12 +18,13 @@ const (
 )
 
 type Meta struct {
-	RunID      string                 `json:"run_id"`
-	CreatedAt  time.Time              `json:"created_at"`
-	Prompt     string                 `json:"prompt"`
-	OutputPath string                 `json:"output_path"`
-	Status     string                 `json:"status"`
-	Stages     map[string]StageResult `json:"stages"`
+	RunID       string                 `json:"run_id"`
+	CreatedAt   time.Time              `json:"created_at"`
+	Prompt      string                 `json:"prompt"`
+	OutputPath  string                 `json:"output_path"`
+	Status      string                 `json:"status"`
+	Stages      map[string]StageResult `json:"stages"`
+	ImageSource string                 `json:"image_source,omitempty"` // "openai" | "user"
 }
 
 type StageResult struct {
@@ -94,6 +95,12 @@ func (r *Run) MarkStage(name, status string, elapsed time.Duration, err error) e
 // SetStatus updates the overall run status and persists meta.json.
 func (r *Run) SetStatus(status string) error {
 	r.Meta.Status = status
+	return r.WriteMeta()
+}
+
+// SetImageSource records where the concept image came from ("openai" or "user").
+func (r *Run) SetImageSource(s string) error {
+	r.Meta.ImageSource = s
 	return r.WriteMeta()
 }
 

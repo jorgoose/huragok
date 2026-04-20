@@ -25,6 +25,7 @@ type Options struct {
 	Prompt     string
 	OutputPath string
 	JSON       bool
+	From       string // path to a user-supplied image; bypasses OpenAI
 }
 
 type Result struct {

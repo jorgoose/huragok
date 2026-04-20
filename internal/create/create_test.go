@@ -93,3 +93,47 @@ func TestRunConfigErrorReturnsResult(t *testing.T) {
 		t.Errorf("Error.Message: got %q", result.Error.Message)
 	}
 }
+
+func TestRunFromMissingImage(t *testing.T) {
+	t.Setenv("HURAGOK_OPENAI_KEY", "")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "fake-id")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "fake-key")
+
+	_, err := Run(context.Background(), Options{
+		From:       "/nonexistent/image.png",
+		OutputPath: "o.glb",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing --from path")
+	}
+	var pe *PipelineError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *PipelineError, got %T", err)
+	}
+	if pe.Code != ExitConfig {
+		t.Errorf("Code: got %d want %d", pe.Code, ExitConfig)
+	}
+	if !strings.Contains(err.Error(), "/nonexistent/image.png") {
+		t.Errorf("error should reference the bad path: %v", err)
+	}
+}
+
+func TestRunFromSkipsOpenAIRequirement(t *testing.T) {
+	t.Setenv("HURAGOK_OPENAI_KEY", "")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "fake-id")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "fake-key")
+
+	// Use a file that exists (this test file itself) just to confirm --from
+	// makes us skip the OpenAI env check. We expect to fail later at the
+	// Hunyuan call (network/auth), not earlier on missing OPENAI key.
+	_, err := Run(context.Background(), Options{
+		From:       "create_test.go",
+		OutputPath: "o.glb",
+	})
+	if err == nil {
+		t.Fatal("expected eventual error from Hunyuan with fake creds")
+	}
+	if strings.Contains(err.Error(), "HURAGOK_OPENAI_KEY") {
+		t.Errorf("--from should skip the OpenAI key check, got: %v", err)
+	}
+}
