@@ -9,9 +9,9 @@
   <code>huragok create "sci-fi cargo crate, metal panels, glowing indicators" --output crate.glb</code>
 </p>
 
-huragok is a CLI tool that turns a text description into a game-ready 3D model in under 3 minutes. It generates a concept image using AI (DALL-E 3), then converts that image into a textured 3D mesh (Hunyuan3D) and outputs a .glb file you can drop into any game engine or 3D viewer.
+huragok turns a text description into a textured 3D mesh in under 3 minutes. It generates a concept image with DALL-E 3, sends that image to Hunyuan3D for image-to-mesh conversion, and writes a textured `.glb` you can drop into a glTF viewer or postprocess for game use.
 
-No modeling skills required. No manual steps. One command, one file out.
+One command, one file out. No modeling skills required.
 
 Named after the <a href="https://www.halopedia.org/Huragok">Huragok</a> (Engineers) from Halo — creatures that fabricate complex objects out of thin air.
 
@@ -39,11 +39,11 @@ go build ./cmd/huragok/
 ./huragok create "futuristic sci-fi cargo crate, metal panels with glowing blue indicators, game prop" --output my_asset.glb
 ```
 
-The pipeline runs automatically: concept image (~12s) → 3D model (~1-2 min) → .glb file.
+The pipeline runs automatically: concept image (~12s) → 3D model (~1-2 min) → `.glb` file.
 
 ### Content filter note
 
-OpenAI's DALL-E 3 blocks certain terms. Avoid: "pistol", "gun", "rifle", "weapon". Use instead: "sidearm", "handgun prop", "blaster prop", "energy device", "game asset". The tool retries automatically up to 3 times on content filter false positives.
+OpenAI's DALL-E 3 blocks certain terms. Avoid: "pistol", "gun", "rifle", "weapon". Use instead: "sidearm", "handgun prop", "blaster prop", "energy device", "game asset". The tool retries automatically up to 3 times on content filter false positives. If a prompt is consistently blocked, fall back to `--from <image>` with reference art you provide.
 
 ---
 
@@ -71,9 +71,10 @@ The audience sees:
   ● HURAGOK — 3D Asset Pipeline
 
   Prompt:  sci-fi sidearm, compact futuristic handgun prop...
+  Run:     2026-04-19_134522_a3f8c2
 
   ▸ Generating concept image... done (13.3s)
-    Saved → .huragok\concept.png
+    Saved → .huragok/runs/2026-04-19_134522_a3f8c2/concept.png
 ```
 
 **Step 2 — talk while Hunyuan3D generates (~1-2 min).** Explain what's happening:
@@ -93,11 +94,11 @@ The audience sees:
 
 **Step 4 — show the result.** Drag `demo_sidearm.glb` into the glTF Viewer browser tab. Rotate the model, zoom in, show the textures.
 
-**Step 5 (optional) — show the concept image.** Open `.huragok/concept.png` to show the intermediate DALL-E 3 image that produced the 3D model.
+**Step 5 (optional) — show the concept image.** Open the concept image at `.huragok/runs/<run-id>/concept.png` to show the intermediate DALL-E image that produced the 3D model.
 
 ### If something goes wrong
 
-- **Content filter blocks the prompt** — the tool auto-retries up to 3 times. If all fail, rephrase using safer terms (see content filter note above)
+- **Content filter blocks the prompt** — the tool auto-retries up to 3 times. If all fail, rephrase using safer terms (see content filter note above) or pass `--from <image>` to skip image generation entirely
 - **Hunyuan3D times out** — run it again
 - **Billing error** — check that API credits exist on both OpenAI and Tencent Cloud
 
@@ -119,487 +120,108 @@ The audience sees:
 
 ---
 
-## Usage scenarios
-
-### "I need a gun model for my game"
-
-You're building an FPS and need a rifle model. You don't have a 3D artist.
-
-```bash
-$ huragok create "futuristic assault rifle, angular design, matte black with blue accents"
-```
-
-huragok refines your prompt, shows you what it came up with — you approve it. It generates concept art — a clean side-view of the rifle. Looks good, you accept. It sends that to Hunyuan3D, waits about a minute, and drops a 48k-face mesh on disk. You inspect it in the review UI (`huragok review`), approve, and it decimates it down to 8k faces and writes `static/assault_rifle.glb`. Total time: ~2 minutes. Cost: ~$0.15.
-
-### "Claude, add a new prop to the arena"
-
-You're working in Claude Code on your game project. You tell Claude you want a new asset. Claude knows about the `huragok` skill, so it runs:
-
-```bash
-huragok create "alien energy blade, glowing plasma edge, ornate hilt, fantasy game prop" \
-  --output static/energy_blade.glb
-```
-
-Claude waits for the pipeline to complete (~2 minutes), confirms the .glb was generated, then wires it into the game code — imports the GLB, adds it to the scene, and sets up the logic. You never left your editor.
-
-`huragok` ships with a [Claude Code skill file](skills/huragok.md) that teaches Claude when and how to invoke the CLI, including prompt guidelines and content filter workarounds. Copy it to your project's `.claude/skills/` directory to enable this workflow.
-
-### "The crate model looks bad, I want to try a different provider"
-
-You generated a cargo crate last week. The shape was fine but the textures were muddy. Your concept art was great though — you don't want to redo that.
-
-```bash
-$ huragok runs
-  2026-03-10_cargo_crate_a3f8   complete   hunyuan3d/pro   $0.14
-  2026-03-12_plasma_rifle_b7c2  complete   hunyuan3d/pro   $0.16
-
-$ huragok resume 2026-03-10_cargo_crate_a3f8 --from model3d --provider meshy
-```
-
-It picks up the existing concept art, sends it to Meshy instead of Hunyuan, and runs post-processing on the new mesh. The concept art wasn't regenerated, so you only paid for one 3D generation call. At scale, this kind of selective re-run adds up — skipping redundant stages across dozens of assets can significantly reduce API costs.
-
-### "I have sketches from my artist, turn them into models"
-
-Your concept artist drew reference sheets for five weapons. You want 3D models from those drawings.
-
-```bash
-$ huragok create --from ./sketches/shotgun_front.png ./sketches/shotgun_side.png \
-    --output static/shotgun.glb
-```
-
-Skips prompt refinement and image generation entirely. Goes straight from your artist's images into 3D generation.
-
-### "I need to batch-generate props for a whole level"
-
-You have a list of environment props you need. You write a simple script:
-
-```bash
-#!/bin/bash
-assets=(
-  "metal storage locker, military, dented:storage_locker"
-  "wall-mounted terminal screen, sci-fi:wall_terminal"
-  "fluorescent ceiling light panel, industrial:ceiling_light"
-  "fire extinguisher, futuristic design:extinguisher"
-)
-
-for entry in "${assets[@]}"; do
-  prompt="${entry%%:*}"
-  name="${entry##*:}"
-  huragok create "$prompt" --auto --output "static/${name}.glb" --json
-done
-```
-
-Runs headlessly, generates all four assets unattended. Check the results in the review UI afterward.
-
-### "I want to review everything from today's generation session"
-
-You generated a handful of assets throughout the day. You want to review them all, compare variants, and decide which to keep.
-
-```bash
-$ huragok review
-```
-
-Opens a local web dashboard in your browser. You see all today's runs, can rotate and inspect each 3D model, compare side-by-side, view the concept art that produced each one, and check costs.
-
----
-
-## Review UI
-
-The terminal is fine for approving prompts and kicking off generation, but reviewing images and 3D models requires actual visual inspection. huragok includes an optional local web dashboard for this.
-
-```bash
-# Open the review UI for all runs
-huragok review
-
-# Open a specific run
-huragok review 2026-03-10_cargo_crate_a3f8
-```
-
-This launches a lightweight local server and opens your browser. No Electron, no install — just a local page.
-
-### What you can do in the review UI
-
-**Run timeline** — browse all past runs chronologically, filter by status, search by prompt.
-
-**Image gallery** — view generated concept art at full resolution. Compare multiple generations side by side. Zoom, pan, check details.
-
-**3D model viewer** — interactive three.js viewer for inspecting meshes. Rotate, zoom, check from all angles. Toggle wireframe to inspect topology. Switch between raw and post-processed versions.
-
-**Before/after comparison** — side-by-side view of the raw mesh vs. the post-processed output. See poly count reduction, texture changes, scale normalization.
-
-**Variant picker** — when you generate multiple variants at the 3D stage, view them all in a carousel and pick the winner.
-
-**Cost dashboard** — running total of API spend, broken down by provider and stage. Useful for tracking budget over time.
-
-The review UI reads directly from the `.huragok/runs/` directory. It doesn't store anything extra — if you delete a run from disk, it disappears from the UI.
-
----
-
-## Pipeline overview
+## How it works
 
 ```
   "sci-fi cargo crate"
          │
          ▼
-  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-  │   PROMPT     │     │   IMAGE      │     │   MODEL      │     │    POST      │
-  │   refine     │────▶│   generate   │────▶│   generate   │────▶│   process    │
-  │              │     │              │     │              │     │              │
-  └──────┬───────┘     └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
-         │                    │                    │                    │
-     checkpoint           checkpoint           checkpoint           output
-     (review)             (review)             (review)               │
-                                                                      ▼
-                                                              cargo_crate.glb
-                                                               (game-ready)
+  ┌─────────────┐     ┌─────────────┐
+  │   IMAGE     │     │    MODEL    │
+  │   generate  │────▶│   generate  │
+  │   (DALL-E)  │     │  (Hunyuan)  │
+  └─────────────┘     └──────┬──────┘
+                             │
+                             ▼
+                       cargo_crate.glb
+                       (textured mesh)
 ```
 
-Every stage produces artifacts, pauses for review, and only advances when approved. Any stage can be skipped, re-run, or swapped to a different provider. The entire run is saved to disk so you can resume, branch, or reproduce it later.
+Two stages, no checkpoints. The image stage can be skipped with `--from <image>` if you already have reference art.
+
+The output is a textured mesh from Hunyuan3D Rapid — typically ~10 MB, ~48k faces. It's suitable for glTF viewers and as a starting point for further processing (decimation, scale normalization, PBR baking) in your favorite tool. Postprocessing inside huragok is on the roadmap.
 
 ---
 
-## Workflow modes
+## Configuration
 
-huragok supports three primary workflows depending on how much control you want over the output.
+### Environment variables
 
-### Full pipeline (maximum control)
-
-```bash
-huragok create "plasma rifle" --pipeline full
-```
-
-```
-text prompt → refined prompt → concept image(s) → 3D model → post-processed .glb
-```
-
-Best when you want to see and approve the concept art before committing to 3D generation. Useful for hero assets where visual fidelity matters.
-
-### Direct (fast iteration)
-
-```bash
-huragok create "plasma rifle" --pipeline direct
-```
-
-```
-text prompt → refined prompt → 3D model → post-processed .glb
-```
-
-Skips image generation entirely. Sends the refined prompt straight to a text-to-3D provider. Faster and cheaper, but less control over the aesthetic.
-
-### From image (bring your own reference)
-
-```bash
-huragok create --from ./concept_art.png
-huragok create --from ./front.png ./side.png ./back.png
-```
-
-```
-your image(s) → 3D model → post-processed .glb
-```
-
-Skips prompt and image generation. Useful when you already have concept art, screenshots, or hand-drawn sketches you want to turn into models.
-
-### Headless / agent mode
-
-```bash
-huragok create "cargo crate" --auto --output static/cargo_crate.glb --json
-```
-
-No interactive checkpoints. Accepts defaults at every stage. Returns structured JSON output. Designed for Claude Code, CI pipelines, or any programmatic caller.
-
----
-
-## Pipeline stages
-
-### Stage 1: Prompt refinement
-
-**Input:** raw text description from the user
-**Output:** an optimized, detailed prompt tuned for the downstream generation model
-
-A terse input like `"sci-fi crate"` doesn't produce great results from image or 3D generators. This stage expands it into a detailed description with material callouts, lighting guidance, stylistic direction, and structural details.
-
-```
-╭─ Prompt Refinement ─────────────────────────────────────╮
-│                                                          │
-│  Input:   "sci-fi cargo crate"                           │
-│                                                          │
-│  Refined: "A weathered military cargo crate with brushed │
-│  titanium panels, recessed glowing blue status           │
-│  indicators along the top edge, angular hard-surface     │
-│  sci-fi design, scratched and dented surface detail,     │
-│  reinforced corner brackets, isolated on a neutral       │
-│  background, suitable for PBR 3D model reference"        │
-│                                                          │
-│  [a]ccept  [e]dit  [r]egenerate  [s]kip stage            │
-╰──────────────────────────────────────────────────────────╯
-```
-
-The refinement is provider-aware. If the next stage is image generation, the prompt is tuned for that (emphasizing visual description, "isolated on neutral background", etc). If going direct to 3D, the prompt is tuned differently (emphasizing geometry, topology hints, material properties).
-
-**Provider options:** OpenAI, Anthropic, or any LLM API.
-
-### Stage 2: Image generation
-
-**Input:** refined prompt
-**Output:** one or more concept images
-
-This stage is **skipped entirely** in `--pipeline direct` mode.
-
-```
-╭─ Image Generation ──────────────────────────────────────╮
-│                                                          │
-│  Provider: openai (gpt-image-1)                          │
-│  Mode:     single | multi-angle | sheet                  │
-│                                                          │
-│  Generated 1 image:                                      │
-│    → .huragok/runs/run_03/images/concept_001.png         │
-│                                                          │
-│  [a]ccept  [r]egenerate  [v]iew                          │
-│  [+] generate additional angles from this concept        │
-│  [m]anual — provide your own image instead                │
-│  [s]wap provider                                         │
-╰──────────────────────────────────────────────────────────╯
-```
-
-**Image modes:**
-
-- **`single`** — one hero concept image. The 3D provider handles multi-view reconstruction internally. Good default.
-- **`multi-angle`** — generates a front view, then uses a multi-view synthesis model (e.g., Zero123++, SV3D, or the 3D provider's own multi-view mode) to produce consistent side/back/3-quarter views from the hero image. Gives the 3D stage more information to work with.
-- **`sheet`** — generates a single turnaround/model-sheet style image with multiple angles composed into one frame. Some 3D providers handle these well.
-
-An important nuance: generating separate images from separate prompts produces inconsistent results (four different-looking crates). True multi-angle requires either:
-1. Generating one hero image, then using a model with strong editing capabilities (e.g., OpenAI's GPT-image-1, Nana Banana Pro) to produce consistent rotated views of the same object — these models can take the original image as a reference and re-render it from a different angle while preserving identity
-2. Using a dedicated multi-view synthesis model (e.g., Zero123++, SV3D) to derive views from the hero image
-3. Generating a turnaround sheet in a single image
-
-huragok handles this automatically based on the selected mode and available providers.
-
-**Provider options:** OpenAI (DALL-E / gpt-image-1), Stability AI, or manual upload.
-
-### Stage 3: 3D model generation
-
-**Input:** text prompt (direct mode) or image(s) (full/from-image mode)
-**Output:** raw 3D mesh
-
-The core of the pipeline. Calls a text-to-3D or image-to-3D API and returns a mesh.
-
-```
-╭─ 3D Generation ─────────────────────────────────────────╮
-│                                                          │
-│  Provider:  hunyuan3d (pro)                              │
-│  Input:     1 concept image (single mode)                │
-│                                                          │
-│  Status:    Generating... ████████████░░░░ 74%           │
-│  Elapsed:   38s                                          │
-│                                                          │
-│  Result:    .huragok/runs/run_03/model_raw.glb           │
-│  Faces:     48,200  |  Vertices: 24,800                  │
-│                                                          │
-│  [a]ccept  [r]egenerate  [v]iew (open 3D viewer)         │
-│  [1-3] generate variants and pick best                   │
-│  [b]ack — return to image stage with different concept    │
-│  [s]wap provider                                         │
-╰──────────────────────────────────────────────────────────╯
-```
-
-**Variant generation:** Option `[1-3]` generates multiple meshes from the same input and lets you compare. Costs more API calls but useful for important assets.
-
-**Provider options:** Tencent Hunyuan3D (Pro/Rapid), Meshy, Tripo, Rodin, or any provider that exposes a REST API.
-
-### Stage 4: Post-processing
-
-**Input:** raw mesh from stage 3
-**Output:** optimized, game-ready .glb
-
-Raw meshes from generative models are rarely game-ready. They tend to have too many polygons, baked-in lighting in textures, inconsistent scale, and no PBR material separation. This stage cleans them up.
-
-```
-╭─ Post-Processing ───────────────────────────────────────╮
-│                                                          │
-│  Operations:                                             │
-│    ✓ Poly reduction   48,200 → 8,000 faces (-83%)       │
-│    ✓ Texture bake     PBR 2048x2048                      │
-│    ✓ Normal map       generated from high-poly           │
-│    ✓ Scale normalize  fitted to 1x1x1 unit bounds        │
-│    ✓ Mesh cleanup     removed 12 floating vertices       │
-│                                                          │
-│  Output: .huragok/runs/run_03/model_final.glb  (2.1 MB) │
-│                                                          │
-│  [a]ccept  [r]edo with different settings                 │
-│  [e]xport to additional formats                          │
-╰──────────────────────────────────────────────────────────╯
-```
-
-**Operations (all configurable, all optional):**
-
-| Operation | What it does | Default |
+| Variable | Required | Purpose |
 |---|---|---|
-| Poly reduction | Decimates mesh to target face count | 8,000 faces |
-| Texture bake | Bakes PBR maps (albedo, normal, roughness, metallic) | 2048x2048 |
-| Scale normalize | Fits model to a unit bounding box | enabled |
-| Mesh cleanup | Removes degenerate tris, isolated vertices, fixes normals | enabled |
-| Format conversion | Converts to target format(s) | .glb |
+| `HURAGOK_OPENAI_KEY` | when generating from a prompt | OpenAI API key for DALL-E 3 |
+| `HURAGOK_HUNYUAN_SECRET_ID` | always | Tencent Cloud SecretId |
+| `HURAGOK_HUNYUAN_SECRET_KEY` | always | Tencent Cloud SecretKey |
 
-**Tooling:** Uses [gltf-transform](https://gltf-transform.dev/) for GLB processing and optimization. Optionally uses Blender headless for operations that need it (complex decimation, UV unwrapping, format export beyond glTF).
+`HURAGOK_OPENAI_KEY` is not required when using `--from <image>` since the image stage is skipped.
 
----
+### Run artifacts
 
-## Provider configuration
-
-huragok is model-agnostic. Each pipeline stage has a provider that can be swapped independently.
-
-### Configuration hierarchy
-
-Settings are resolved in this order (later wins):
-
-1. **Built-in defaults** — sensible starting points
-2. **Global config** — `~/.huragok/config.toml` — your API keys and personal defaults
-3. **Project config** — `.huragok/config.toml` — project-specific style, targets, providers
-4. **CLI flags** — per-invocation overrides
-
-### Example configuration
-
-```toml
-# .huragok/config.toml
-
-[prompt]
-provider = "openai"           # LLM for prompt refinement
-model = "gpt-4o"
-# Optional: style direction injected into every refinement
-style_prefix = "Halo-inspired sci-fi military aesthetic"
-
-[image]
-provider = "openai"
-model = "gpt-image-1"
-mode = "single"               # single | multi-angle | sheet
-size = "1024x1024"
-
-[model3d]
-provider = "hunyuan3d"        # hunyuan3d | meshy | tripo | rodin
-edition = "pro"               # pro | rapid (provider-specific)
-
-[postprocess]
-enabled = true
-target_faces = 8000
-texture_size = 2048
-normalize_scale = true
-cleanup = true
-format = "glb"                # glb | gltf | fbx | obj
-
-[postprocess.blender]
-enabled = false               # enable for advanced operations
-path = "blender"              # path to Blender binary
-```
-
-### API keys
-
-Stored in the global config or as environment variables:
-
-```bash
-export HURAGOK_OPENAI_KEY="sk-..."
-export HURAGOK_HUNYUAN_SECRET_ID="..."
-export HURAGOK_HUNYUAN_SECRET_KEY="..."
-```
-
----
-
-## Run management
-
-Every invocation of `huragok create` produces a **run** — a directory containing all intermediate artifacts, settings, and metadata.
-
-### Run directory structure
+Each invocation writes to `.huragok/runs/<run-id>/`:
 
 ```
-.huragok/runs/
-└── 2026-03-16_cargo_crate_a3f8/
-    ├── meta.json               # run ID, timestamps, provider settings, costs
-    ├── prompt_input.txt        # original user prompt
-    ├── prompt_refined.txt      # refined prompt from stage 1
-    ├── images/                 # concept images from stage 2
-    │   ├── concept_001.png
-    │   └── concept_002.png
-    ├── model_raw.glb           # raw output from stage 3
-    ├── model_final.glb         # post-processed output from stage 4
-    └── logs.txt                # provider responses, timing, errors
+.huragok/runs/2026-04-19_134522_a3f8c2/
+├── meta.json          # run ID, timestamps, status, per-stage timing, image source
+├── prompt.txt         # the original prompt (empty if --from was used)
+├── concept.png        # concept image (from DALL-E or copied from --from)
+├── model_raw.glb      # raw Hunyuan3D output
+└── model_final.glb    # what was copied to --output (identical to raw today; reserved for postprocessing)
 ```
 
-### Run commands
-
-```bash
-# List all runs
-huragok runs
-
-# Inspect a specific run
-huragok runs inspect <run-id>
-
-# Resume a run from a specific stage
-huragok resume <run-id> --from image
-
-# Re-run from a stage with different settings
-huragok resume <run-id> --from model3d --provider meshy
-
-# Delete old runs
-huragok runs clean --older-than 30d
-```
-
-### Resuming
-
-Resuming is a first-class concept. API calls cost money and time — if 3D generation produces a bad mesh, you shouldn't have to regenerate the concept art too. `huragok resume` picks up from any stage using the artifacts already on disk.
-
-```bash
-# The 3D model was bad, but the concept art was great.
-# Re-run just the 3D stage with a different provider:
-huragok resume 2026-03-16_cargo_crate_a3f8 --from model3d --provider meshy
-```
+The `--output` path receives a copy of `model_final.glb`. Old runs are kept on disk; cleanup is manual for now.
 
 ---
 
 ## Agent and automation integration
 
-huragok is designed to be called by AI coding agents (like Claude Code) and CI pipelines, not just humans at a terminal.
+huragok is designed to be invoked headlessly by AI coding agents (Claude Code) and CI pipelines, not just by humans at a terminal.
 
 ### Headless mode
 
 ```bash
-huragok create "cargo crate, sci-fi military" \
-  --auto \
-  --output static/cargo_crate.glb \
-  --json
+huragok create "cargo crate, sci-fi military" --output static/cargo_crate.glb --json
 ```
 
-- **`--auto`** — skips all interactive checkpoints, accepts defaults at every stage
-- **`--output`** — copies the final artifact to a specific path (in addition to the run directory)
-- **`--json`** — prints structured JSON to stdout when done:
+In `--json` mode, stdout receives exactly one JSON object describing the run:
 
 ```json
 {
-  "run_id": "2026-03-16_cargo_crate_a3f8",
+  "run_id": "2026-04-19_134522_a3f8c2",
   "status": "complete",
   "stages": {
-    "prompt": { "status": "complete", "refined_prompt": "..." },
-    "image": { "status": "complete", "images": ["...path..."] },
-    "model3d": { "status": "complete", "faces": 48200, "vertices": 24800 },
-    "postprocess": { "status": "complete", "faces": 8000, "output_size_mb": 2.1 }
+    "image":   {"status": "complete", "elapsed_ms": 13300},
+    "model3d": {"status": "complete", "elapsed_ms": 65200}
   },
-  "output": "static/cargo_crate.glb",
-  "elapsed_seconds": 94,
-  "cost_estimate_usd": 0.18
+  "output": "/abs/path/to/cargo_crate.glb",
+  "elapsed_seconds": 78.5
 }
 ```
+
+On failure, `status` is `"failed"` and an `error` envelope is included with `stage` and `message` fields. Pretty terminal output is suppressed in `--json` mode; errors still go to stderr so a human watching can see them.
 
 ### Exit codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Stage failed (check `--json` output for which stage) |
-| 2 | Configuration error (missing API key, bad config) |
-| 3 | Network/API error (timeout, rate limit) after retries |
-| 4 | User cancelled (interactive mode) |
+| 1 | Stage failed (provider error, mesh generation rejected) |
+| 2 | Configuration error (missing env var, bad argument, bad `--from` path) |
+| 3 | Network/API error (timeout, rate limit, 5xx) — safe to retry |
+| 4 | User cancelled (Ctrl+C) |
 
-### Claude Code skill integration
+### Bring your own image
 
-huragok ships with a Claude Code skill at [`skills/huragok.md`](skills/huragok.md). The skill teaches Claude when to invoke the CLI, how to parse the JSON output, what each exit code means, and how to work around the DALL-E content filter.
+Skip OpenAI entirely and send a reference image straight to Hunyuan3D:
+
+```bash
+huragok create --from concept.png --output static/asset.glb --json
+```
+
+Halves cost, sidesteps the content filter, and often produces better meshes when you have real concept art.
+
+### Claude Code skill
+
+huragok ships with a Claude Code skill at [`skills/huragok.md`](skills/huragok.md). It teaches Claude when to invoke the CLI, how to parse the JSON output, what each exit code means, and how to work around the DALL-E content filter.
 
 To install:
 
@@ -610,71 +232,53 @@ cp skills/huragok.md .claude/skills/
 
 Once installed, Claude Code will automatically invoke huragok when the user asks for a 3D model, mesh, or game asset.
 
-### Cost awareness
-
-3D generation APIs are not free. huragok tracks estimated costs per run and can enforce budgets:
-
-```bash
-# Set a per-run cost ceiling
-huragok create "plasma rifle" --max-cost 0.50
-
-# Show cost summary for recent runs
-huragok runs costs --last 30d
-```
-
-In `--auto` mode, hitting the cost ceiling causes a non-zero exit rather than silently spending more.
-
 ---
 
 ## CLI reference
 
 ```
-huragok create <prompt>          Create a new 3D asset from a text description
-  --pipeline <full|direct>       Pipeline mode (default: full)
-  --from <path> [path...]        Start from existing image(s), skip prompt/image stages
-  --output <path>                Copy final output to this path
-  --auto                         Non-interactive, accept all defaults
-  --json                         Print structured JSON result to stdout
-  --provider <name>              Override 3D generation provider for this run
-  --max-cost <usd>               Abort if estimated cost exceeds this amount
-  --variants <n>                 Generate n variants at the 3D stage, pick best
-
-huragok resume <run-id>          Resume a previous run
-  --from <stage>                 Stage to resume from (prompt|image|model3d|postprocess)
-  --provider <name>              Override provider for resumed stages
-
-huragok runs                     List all runs
-huragok runs inspect <run-id>    Show details and artifacts for a run
-huragok runs costs [--last <d>]  Show cost summary
-huragok runs clean               Delete old run artifacts
-  --older-than <duration>        e.g. 30d, 7d
-  --keep-final                   Keep only final .glb, delete intermediates
-
-huragok config                   Show resolved configuration
-huragok config init              Create a .huragok/config.toml in the current project
-huragok config set <key> <val>   Set a configuration value
-
-huragok review [run-id]          Open the review UI in your browser
-  --port <port>                  Local server port (default: 4680)
-
-huragok providers                List available providers and their capabilities
+huragok create [prompt]            Generate a 3D model from a text description
+  -o, --output <path>              Output path for the .glb (default: output.glb)
+      --from <path>                Use this image instead of generating one with DALL-E
+      --json                       Print structured JSON result to stdout
 ```
+
+Either a prompt argument or `--from` is required. If both are provided, the prompt is ignored with a warning.
+
+---
+
+## Non-goals
+
+The following are explicitly **not** planned. Listed here so the same scope-creep questions don't recur:
+
+- **Maximalist web review UI** (filtering, search, cost dashboard, side-by-side comparison, variant carousel, wireframe toggle, before/after view). For inspecting one model, [glTF Viewer](https://gltf-viewer.donmccurdy.com/) is sufficient. A *minimal* viewer is on the roadmap.
+- **Multi-provider abstraction** (Meshy, Tripo, Rodin, Stability). Hunyuan3D is sufficient until proven otherwise. Provider abstractions usually leak; build when there's evidence, not before.
+- **Multi-angle / sheet image modes.** Hunyuan3D handles multi-view internally. Generating multiple separate images and combining them produces inconsistent results.
+- **Interactive TUI checkpoints** (`[a]ccept [e]dit [r]egenerate [s]kip` boxes). The tool is designed to be agent-callable; an interactive TUI is in tension with that.
+- **`--variants n`** generation. Costs n× per call with hand-wavy "pick best" UX.
+- **`--pipeline direct` text-to-3D.** Provider-dependent (would require a different provider). Defer.
+- **TOML config** (`huragok config`). No knobs to configure yet. Add if and when there are.
+- **`--auto` flag.** The CLI is always non-interactive in v0.x. A no-op flag would pretend to support a feature that doesn't exist.
 
 ---
 
 ## Roadmap
 
-- [ ] Core CLI scaffold and configuration system
-- [ ] Prompt refinement stage (OpenAI)
-- [ ] Image generation stage (OpenAI)
-- [ ] 3D generation stage (Hunyuan3D via Tencent API)
-- [ ] Post-processing stage (gltf-transform)
-- [ ] Run management (save, list, resume)
-- [ ] Headless/JSON mode for agent integration
-- [ ] Claude Code skill file
-- [ ] Cost tracking and budgets
-- [ ] Review UI (local web dashboard with 3D viewer)
-- [ ] Additional providers (Meshy, Tripo, Stability AI)
-- [ ] Turnaround sheet / multi-view synthesis support
-- [ ] Recipe/preset system for common asset types
-- [ ] Batch generation mode
+**v0.1 (shipped):**
+- [x] Core CLI + image stage (OpenAI DALL-E 3)
+- [x] 3D generation stage (Hunyuan3D Rapid via Tencent Cloud)
+- [x] Per-run directory layout (`.huragok/runs/<id>/`)
+- [x] `--json` headless output
+- [x] Categorized exit codes (config / network / stage / cancelled)
+- [x] `--from <image>` to skip image generation
+- [x] Claude Code skill file
+
+**v0.2 (planned):**
+- [ ] `huragok resume <id> --from model3d` — re-run the 3D stage on an existing concept image without paying for DALL-E again
+- [ ] Cost tracking + `--max-cost` safety belt for headless callers
+- [ ] `huragok runs` and `huragok runs inspect <id>` commands
+- [ ] Minimal local viewer (`huragok review`) — list runs, click one to see concept image + 3D preview. No dashboard, no comparison.
+
+**Maybe later:**
+- Postprocessing (decimation, scale normalization, PBR bake) — must not break single-binary distribution
+- Additional providers — only if Hunyuan3D proves insufficient
