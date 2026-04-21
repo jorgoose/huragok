@@ -7,54 +7,63 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/jorgoose/huragok/internal/cliresult"
 	"github.com/jorgoose/huragok/internal/display"
 	"github.com/jorgoose/huragok/internal/provider"
 	"github.com/jorgoose/huragok/internal/runs"
 )
 
-// Run executes the create pipeline. Returns a Result describing what happened
-// (always non-nil) and a *PipelineError on failure whose Code maps to the
-// process exit code.
-func Run(ctx context.Context, opts Options) (*Result, error) {
-	started := time.Now()
-	result := &Result{Stages: map[string]StageBrief{}}
+type Options struct {
+	Prompt     string
+	OutputPath string
+	JSON       bool
+	From       string // path to a user-supplied image; bypasses OpenAI
+	WorkDir    string // root for run directories; defaults to ".huragok" when empty
+}
 
-	finalize := func(err error) (*Result, error) {
+// Run executes the create pipeline. Returns a Result describing what happened
+// (always non-nil) and a *cliresult.PipelineError on failure whose Code maps
+// to the process exit code.
+func Run(ctx context.Context, opts Options) (*cliresult.Result, error) {
+	started := time.Now()
+	result := &cliresult.Result{Stages: map[string]cliresult.StageBrief{}}
+
+	finalize := func(err error) (*cliresult.Result, error) {
 		result.ElapsedSeconds = time.Since(started).Seconds()
 		if err != nil {
-			result.Status = StatusFailed
-			pe, ok := err.(*PipelineError)
+			result.Status = cliresult.StatusFailed
+			pe, ok := err.(*cliresult.PipelineError)
 			if !ok {
-				pe = &PipelineError{Code: ExitStage, Stage: "unknown", Err: err}
+				pe = &cliresult.PipelineError{Code: cliresult.ExitStage, Stage: "unknown", Err: err}
 			}
-			result.Error = &ResultError{Stage: pe.Stage, Message: pe.Err.Error()}
+			result.Error = &cliresult.ResultError{Stage: pe.Stage, Message: pe.Err.Error()}
 			if !opts.JSON {
 				display.Error(pe.Err.Error())
 			}
 			return result, pe
 		}
-		result.Status = StatusComplete
+		result.Status = cliresult.StatusComplete
 		return result, nil
 	}
 
 	// OpenAI is only required when generating a concept image — --from skips it.
 	openaiKey := os.Getenv("HURAGOK_OPENAI_KEY")
 	if opts.From == "" && openaiKey == "" {
-		return finalize(configError(fmt.Errorf("HURAGOK_OPENAI_KEY environment variable is required")))
+		return finalize(cliresult.ConfigError(fmt.Errorf("HURAGOK_OPENAI_KEY environment variable is required")))
 	}
 	hunyuanSecretID := os.Getenv("HURAGOK_HUNYUAN_SECRET_ID")
 	if hunyuanSecretID == "" {
-		return finalize(configError(fmt.Errorf("HURAGOK_HUNYUAN_SECRET_ID environment variable is required")))
+		return finalize(cliresult.ConfigError(fmt.Errorf("HURAGOK_HUNYUAN_SECRET_ID environment variable is required")))
 	}
 	hunyuanSecretKey := os.Getenv("HURAGOK_HUNYUAN_SECRET_KEY")
 	if hunyuanSecretKey == "" {
-		return finalize(configError(fmt.Errorf("HURAGOK_HUNYUAN_SECRET_KEY environment variable is required")))
+		return finalize(cliresult.ConfigError(fmt.Errorf("HURAGOK_HUNYUAN_SECRET_KEY environment variable is required")))
 	}
 
 	outDir := filepath.Dir(opts.OutputPath)
 	if outDir != "" && outDir != "." {
 		if err := os.MkdirAll(outDir, 0o755); err != nil {
-			return finalize(configError(fmt.Errorf("creating output directory: %w", err)))
+			return finalize(cliresult.ConfigError(fmt.Errorf("creating output directory: %w", err)))
 		}
 	}
 
@@ -64,7 +73,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 	run, err := runs.New(workDir, opts.Prompt, opts.OutputPath)
 	if err != nil {
-		return finalize(configError(err))
+		return finalize(cliresult.ConfigError(err))
 	}
 	result.RunID = run.Meta.RunID
 
@@ -83,14 +92,14 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		dst := filepath.Join(run.Dir(), "concept.png")
 		src, err := os.ReadFile(opts.From)
 		if err != nil {
-			return finalize(configError(fmt.Errorf("reading --from image %s: %w", opts.From, err)))
+			return finalize(cliresult.ConfigError(fmt.Errorf("reading --from image %s: %w", opts.From, err)))
 		}
 		if err := os.WriteFile(dst, src, 0o644); err != nil {
-			return finalize(stageError("io", fmt.Errorf("copying user image to run dir: %w", err)))
+			return finalize(cliresult.StageError("io", fmt.Errorf("copying user image to run dir: %w", err)))
 		}
 		imgResult = &provider.ImageResult{Path: dst}
 		_ = run.MarkStage("image", runs.StatusComplete, 0, nil)
-		result.Stages["image"] = StageBrief{Status: StatusComplete, ElapsedMs: 0}
+		result.Stages["image"] = cliresult.StageBrief{Status: cliresult.StatusComplete, ElapsedMs: 0}
 		if !opts.JSON {
 			display.StageInfo(fmt.Sprintf("Using image → %s", dst))
 			fmt.Println()
@@ -107,11 +116,11 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		if err != nil {
 			_ = run.MarkStage("image", runs.StatusFailed, imgElapsed, err)
 			_ = run.SetStatus(runs.StatusFailed)
-			result.Stages["image"] = StageBrief{Status: StatusFailed, ElapsedMs: imgElapsed.Milliseconds()}
-			return finalize(stageError("image", err))
+			result.Stages["image"] = cliresult.StageBrief{Status: cliresult.StatusFailed, ElapsedMs: imgElapsed.Milliseconds()}
+			return finalize(cliresult.StageError("image", err))
 		}
 		_ = run.MarkStage("image", runs.StatusComplete, imgElapsed, nil)
-		result.Stages["image"] = StageBrief{Status: StatusComplete, ElapsedMs: imgElapsed.Milliseconds()}
+		result.Stages["image"] = cliresult.StageBrief{Status: cliresult.StatusComplete, ElapsedMs: imgElapsed.Milliseconds()}
 		if !opts.JSON {
 			display.StageDone(imgStart)
 			display.StageInfo(fmt.Sprintf("Saved → %s", imgResult.Path))
@@ -129,11 +138,11 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		_ = run.MarkStage("model3d", runs.StatusFailed, modElapsed, err)
 		_ = run.SetStatus(runs.StatusFailed)
-		result.Stages["model3d"] = StageBrief{Status: StatusFailed, ElapsedMs: modElapsed.Milliseconds()}
-		return finalize(stageError("model3d", err))
+		result.Stages["model3d"] = cliresult.StageBrief{Status: cliresult.StatusFailed, ElapsedMs: modElapsed.Milliseconds()}
+		return finalize(cliresult.StageError("model3d", err))
 	}
 	_ = run.MarkStage("model3d", runs.StatusComplete, modElapsed, nil)
-	result.Stages["model3d"] = StageBrief{Status: StatusComplete, ElapsedMs: modElapsed.Milliseconds()}
+	result.Stages["model3d"] = cliresult.StageBrief{Status: cliresult.StatusComplete, ElapsedMs: modElapsed.Milliseconds()}
 	if !opts.JSON {
 		display.StageDone(modStart)
 		if stat, statErr := os.Stat(modelPath); statErr == nil {
@@ -144,14 +153,14 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	// Copy raw → final inside the run dir, and to the user-supplied output path.
 	modelData, err := os.ReadFile(modelPath)
 	if err != nil {
-		return finalize(stageError("io", fmt.Errorf("reading model: %w", err)))
+		return finalize(cliresult.StageError("io", fmt.Errorf("reading model: %w", err)))
 	}
 	finalInRun := filepath.Join(run.Dir(), "model_final.glb")
 	if err := os.WriteFile(finalInRun, modelData, 0o644); err != nil {
-		return finalize(stageError("io", fmt.Errorf("writing final model in run dir: %w", err)))
+		return finalize(cliresult.StageError("io", fmt.Errorf("writing final model in run dir: %w", err)))
 	}
 	if err := os.WriteFile(opts.OutputPath, modelData, 0o644); err != nil {
-		return finalize(stageError("io", fmt.Errorf("writing output: %w", err)))
+		return finalize(cliresult.StageError("io", fmt.Errorf("writing output: %w", err)))
 	}
 
 	_ = run.SetStatus(runs.StatusComplete)

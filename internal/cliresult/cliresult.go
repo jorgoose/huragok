@@ -1,4 +1,7 @@
-package create
+// Package cliresult holds the JSON output schema and the exit-code-bearing
+// error type used by every huragok subcommand. Centralizing both prevents the
+// JSON contract from drifting between create, resume, and future commands.
+package cliresult
 
 import (
 	"context"
@@ -21,16 +24,9 @@ const (
 	StatusFailed   = "failed"
 )
 
-type Options struct {
-	Prompt     string
-	OutputPath string
-	JSON       bool
-	From       string // path to a user-supplied image; bypasses OpenAI
-	WorkDir    string // root for run directories; defaults to ".huragok" when empty
-}
-
 type Result struct {
 	RunID          string                `json:"run_id,omitempty"`
+	ParentRunID    string                `json:"parent_run_id,omitempty"`
 	Status         string                `json:"status"`
 	Stages         map[string]StageBrief `json:"stages,omitempty"`
 	Output         string                `json:"output,omitempty"`
@@ -71,10 +67,10 @@ func (e *PipelineError) Error() string {
 
 func (e *PipelineError) Unwrap() error { return e.Err }
 
-// classify maps an underlying API/IO error to an exit code. Heuristic — leans
+// Classify maps an underlying API/IO error to an exit code. Heuristic — leans
 // on substring matching because providers don't expose typed auth/rate-limit
 // errors consistently.
-func classify(err error) int {
+func Classify(err error) int {
 	if err == nil {
 		return ExitSuccess
 	}
@@ -101,10 +97,12 @@ func containsAny(s string, subs ...string) bool {
 	return false
 }
 
-func stageError(stage string, err error) *PipelineError {
-	return &PipelineError{Code: classify(err), Stage: stage, Err: err}
+// StageError wraps a stage-level error with its categorized exit code.
+func StageError(stage string, err error) *PipelineError {
+	return &PipelineError{Code: Classify(err), Stage: stage, Err: err}
 }
 
-func configError(err error) *PipelineError {
+// ConfigError wraps a configuration-level error.
+func ConfigError(err error) *PipelineError {
 	return &PipelineError{Code: ExitConfig, Stage: "config", Err: err}
 }

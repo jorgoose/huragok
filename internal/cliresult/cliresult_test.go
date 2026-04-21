@@ -1,4 +1,4 @@
-package create
+package cliresult
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -28,8 +29,8 @@ func TestClassify(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := classify(tc.err); got != tc.want {
-				t.Errorf("classify(%v) = %d, want %d", tc.err, got, tc.want)
+			if got := Classify(tc.err); got != tc.want {
+				t.Errorf("Classify(%v) = %d, want %d", tc.err, got, tc.want)
 			}
 		})
 	}
@@ -43,6 +44,26 @@ func TestPipelineErrorUnwrap(t *testing.T) {
 	}
 	if pe.Error() != "inner" {
 		t.Errorf("Error(): got %q want %q", pe.Error(), "inner")
+	}
+}
+
+func TestStageErrorClassifies(t *testing.T) {
+	pe := StageError("image", errors.New("connection refused"))
+	if pe.Code != ExitNetwork {
+		t.Errorf("Code: got %d want %d", pe.Code, ExitNetwork)
+	}
+	if pe.Stage != "image" {
+		t.Errorf("Stage: got %q want image", pe.Stage)
+	}
+}
+
+func TestConfigErrorAlwaysExitConfig(t *testing.T) {
+	pe := ConfigError(errors.New("any reason"))
+	if pe.Code != ExitConfig {
+		t.Errorf("Code: got %d want %d", pe.Code, ExitConfig)
+	}
+	if pe.Stage != "config" {
+		t.Errorf("Stage: got %q want config", pe.Stage)
 	}
 }
 
@@ -70,8 +91,10 @@ func TestResultWriteJSONShape(t *testing.T) {
 			t.Errorf("missing key %q", key)
 		}
 	}
-	if _, ok := got["error"]; ok {
-		t.Errorf("error key should be omitted on success")
+	for _, key := range []string{"error", "parent_run_id"} {
+		if _, ok := got[key]; ok {
+			t.Errorf("key %q should be omitted when empty", key)
+		}
 	}
 }
 
@@ -100,16 +123,22 @@ func TestResultWriteJSONErrorEnvelope(t *testing.T) {
 	if errObj["stage"] != "image" {
 		t.Errorf("error.stage: got %v", errObj["stage"])
 	}
-	if !contains(fmt.Sprint(errObj["message"]), "openai") {
+	if !strings.Contains(fmt.Sprint(errObj["message"]), "openai") {
 		t.Errorf("error.message: got %v", errObj["message"])
 	}
 }
 
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
+func TestResultWriteJSONParentRunID(t *testing.T) {
+	r := &Result{
+		RunID:       "child",
+		ParentRunID: "parent",
+		Status:      StatusComplete,
 	}
-	return false
+	var buf bytes.Buffer
+	if err := r.WriteJSON(&buf); err != nil {
+		t.Fatalf("WriteJSON: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"parent_run_id": "parent"`) {
+		t.Errorf("expected parent_run_id in output: %s", buf.String())
+	}
 }

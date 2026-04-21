@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/jorgoose/huragok/internal/cliresult"
 	"github.com/jorgoose/huragok/internal/create"
 	"github.com/spf13/cobra"
 )
@@ -66,11 +67,11 @@ func main() {
 	root.AddCommand(createCmd)
 
 	if err := root.Execute(); err != nil {
-		var pe *create.PipelineError
+		var pe *cliresult.PipelineError
 		if errors.As(err, &pe) {
 			os.Exit(pe.Code)
 		}
 		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(create.ExitConfig)
+		os.Exit(cliresult.ExitConfig)
 	}
 }
