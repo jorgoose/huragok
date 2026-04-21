@@ -7,6 +7,7 @@ import (
 
 	"github.com/jorgoose/huragok/internal/cliresult"
 	"github.com/jorgoose/huragok/internal/create"
+	"github.com/jorgoose/huragok/internal/resume"
 	"github.com/spf13/cobra"
 )
 
@@ -64,7 +65,44 @@ func main() {
 	createCmd.Flags().Bool("json", false, "print structured JSON result to stdout")
 	createCmd.Flags().String("from", "", "use this image instead of generating one with DALL-E")
 
+	resumeCmd := &cobra.Command{
+		Use:           "resume <run-id>",
+		Short:         "Re-run a stage of a previous run, reusing its artifacts",
+		Long:          "Re-runs a stage of a previous run against its existing concept image. Currently only --from model3d is supported, which re-calls Hunyuan3D without paying for a new DALL-E image.",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			outputPath, _ := cmd.Flags().GetString("output")
+			if outputPath == "" {
+				outputPath = "output.glb"
+			}
+			jsonOut, _ := cmd.Flags().GetBool("json")
+			stage, _ := cmd.Flags().GetString("from")
+
+			result, runErr := resume.Run(cmd.Context(), resume.Options{
+				ParentRunID: args[0],
+				Stage:       stage,
+				OutputPath:  outputPath,
+				JSON:        jsonOut,
+			})
+
+			if jsonOut && result != nil {
+				_ = result.WriteJSON(os.Stdout)
+			}
+			if runErr != nil && jsonOut {
+				fmt.Fprintln(os.Stderr, "Error:", runErr)
+			}
+			return runErr
+		},
+	}
+
+	resumeCmd.Flags().StringP("output", "o", "", "output path for the regenerated .glb")
+	resumeCmd.Flags().Bool("json", false, "print structured JSON result to stdout")
+	resumeCmd.Flags().String("from", "model3d", "stage to resume from (currently only model3d)")
+
 	root.AddCommand(createCmd)
+	root.AddCommand(resumeCmd)
 
 	if err := root.Execute(); err != nil {
 		var pe *cliresult.PipelineError

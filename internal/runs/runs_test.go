@@ -95,6 +95,86 @@ func TestMetaRoundTrip(t *testing.T) {
 	}
 }
 
+func TestValidateID(t *testing.T) {
+	cases := []struct {
+		id    string
+		valid bool
+	}{
+		{"2026-04-19_134522_a3f8c2", true},
+		{"2026-04-19_134522_A3F8C2", false},  // uppercase hex rejected
+		{"2026-04-19_134522_a3f8c", false},    // 5 hex chars
+		{"2026-04-19_134522_a3f8c2x", false},  // trailing junk
+		{"../../etc/passwd", false},           // path traversal attempt
+		{"", false},
+		{"2026-04-19_134522", false},          // missing hex
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			err := ValidateID(tc.id)
+			if (err == nil) != tc.valid {
+				t.Errorf("ValidateID(%q): err=%v, valid=%v", tc.id, err, tc.valid)
+			}
+		})
+	}
+}
+
+func TestRead(t *testing.T) {
+	root := t.TempDir()
+	r, err := New(root, "test prompt", "out.glb")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := r.MarkStage("image", StatusComplete, 100*time.Millisecond, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Read(root, r.Meta.RunID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if got.RunID != r.Meta.RunID {
+		t.Errorf("RunID: got %q want %q", got.RunID, r.Meta.RunID)
+	}
+	if got.Prompt != "test prompt" {
+		t.Errorf("Prompt: got %q", got.Prompt)
+	}
+	if got.Stages["image"].Status != StatusComplete {
+		t.Errorf("image stage: got %q", got.Stages["image"].Status)
+	}
+}
+
+func TestReadInvalidID(t *testing.T) {
+	_, err := Read(t.TempDir(), "../../etc/passwd")
+	if err == nil {
+		t.Fatal("expected error for path-traversal id")
+	}
+}
+
+func TestReadMissingRun(t *testing.T) {
+	_, err := Read(t.TempDir(), "2026-04-19_134522_a3f8c2")
+	if err == nil {
+		t.Fatal("expected error for nonexistent run")
+	}
+}
+
+func TestSetParentRunID(t *testing.T) {
+	root := t.TempDir()
+	r, err := New(root, "p", "out.glb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetParentRunID("2026-04-18_120000_aabbcc"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(root, r.Meta.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ParentRunID != "2026-04-18_120000_aabbcc" {
+		t.Errorf("ParentRunID: got %q", got.ParentRunID)
+	}
+}
+
 func TestMarkStageWithError(t *testing.T) {
 	root := t.TempDir()
 	r, err := New(root, "p", "out.glb")

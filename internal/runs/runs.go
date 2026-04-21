@@ -7,8 +7,46 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
+
+var runIDPattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}_\d{6}_[0-9a-f]{6}$`)
+
+// ValidateID returns nil iff id matches the YYYY-MM-DD_HHMMSS_<6-hex> format.
+// Validating before joining into a path prevents traversal via crafted IDs.
+func ValidateID(id string) error {
+	if !runIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid run id %q (expected YYYY-MM-DD_HHMMSS_<6-hex>)", id)
+	}
+	return nil
+}
+
+// Read loads a run's meta.json from disk.
+func Read(rootDir, runID string) (*Meta, error) {
+	if err := ValidateID(runID); err != nil {
+		return nil, err
+	}
+	metaPath := filepath.Join(rootDir, "runs", runID, "meta.json")
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading meta.json for run %s: %w", runID, err)
+	}
+	var meta Meta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil, fmt.Errorf("parsing meta.json for run %s: %w", runID, err)
+	}
+	return &meta, nil
+}
+
+// RunDir returns the absolute-or-relative path to the run's directory.
+// Used by callers that need to read sibling artifacts (e.g., concept.png).
+func RunDir(rootDir, runID string) (string, error) {
+	if err := ValidateID(runID); err != nil {
+		return "", err
+	}
+	return filepath.Join(rootDir, "runs", runID), nil
+}
 
 const (
 	StatusPending  = "pending"
@@ -24,7 +62,8 @@ type Meta struct {
 	OutputPath  string                 `json:"output_path"`
 	Status      string                 `json:"status"`
 	Stages      map[string]StageResult `json:"stages"`
-	ImageSource string                 `json:"image_source,omitempty"` // "openai" | "user"
+	ImageSource string                 `json:"image_source,omitempty"`  // "openai" | "user"
+	ParentRunID string                 `json:"parent_run_id,omitempty"` // set when this run resumes another
 }
 
 type StageResult struct {
@@ -101,6 +140,12 @@ func (r *Run) SetStatus(status string) error {
 // SetImageSource records where the concept image came from ("openai" or "user").
 func (r *Run) SetImageSource(s string) error {
 	r.Meta.ImageSource = s
+	return r.WriteMeta()
+}
+
+// SetParentRunID records that this run resumes from another.
+func (r *Run) SetParentRunID(id string) error {
+	r.Meta.ParentRunID = id
 	return r.WriteMeta()
 }
 
