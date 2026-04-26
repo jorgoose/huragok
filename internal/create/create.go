@@ -14,11 +14,12 @@ import (
 )
 
 type Options struct {
-	Prompt     string
-	OutputPath string
-	JSON       bool
-	From       string // path to a user-supplied image; bypasses OpenAI
-	WorkDir    string // root for run directories; defaults to ".huragok" when empty
+	Prompt      string
+	OutputPath  string
+	JSON        bool
+	From        string  // path to a user-supplied image; bypasses OpenAI
+	WorkDir     string  // root for run directories; defaults to ".huragok" when empty
+	MaxCostUSD  float64 // 0 = no cap; otherwise abort before the Hunyuan call if cumulative would exceed
 }
 
 // Run executes the create pipeline. Returns a Result describing what happened
@@ -99,6 +100,7 @@ func Run(ctx context.Context, opts Options) (*cliresult.Result, error) {
 		}
 		imgResult = &provider.ImageResult{Path: dst}
 		_ = run.MarkStage("image", runs.StatusComplete, 0, nil)
+		// --from costs nothing in stage 1.
 		result.Stages["image"] = cliresult.StageBrief{Status: cliresult.StatusComplete, ElapsedMs: 0}
 		if !opts.JSON {
 			display.StageInfo(fmt.Sprintf("Using image → %s", dst))
@@ -120,11 +122,27 @@ func Run(ctx context.Context, opts Options) (*cliresult.Result, error) {
 			return finalize(cliresult.StageError("image", err))
 		}
 		_ = run.MarkStage("image", runs.StatusComplete, imgElapsed, nil)
-		result.Stages["image"] = cliresult.StageBrief{Status: cliresult.StatusComplete, ElapsedMs: imgElapsed.Milliseconds()}
+		_ = run.SetStageCost("image", provider.DallE3StandardCostUSD)
+		result.Stages["image"] = cliresult.StageBrief{
+			Status:          cliresult.StatusComplete,
+			ElapsedMs:       imgElapsed.Milliseconds(),
+			CostEstimateUSD: provider.DallE3StandardCostUSD,
+		}
+		result.CostEstimateUSD += provider.DallE3StandardCostUSD
 		if !opts.JSON {
 			display.StageDone(imgStart)
 			display.StageInfo(fmt.Sprintf("Saved → %s", imgResult.Path))
 			fmt.Println()
+		}
+	}
+
+	// Pre-flight max-cost check before the expensive Hunyuan call.
+	if opts.MaxCostUSD > 0 {
+		projected := result.CostEstimateUSD + provider.HunyuanRapidCostUSD
+		if projected > opts.MaxCostUSD {
+			return finalize(cliresult.ConfigError(fmt.Errorf(
+				"--max-cost cap of $%.2f would be exceeded by Hunyuan3D call (cumulative $%.2f)",
+				opts.MaxCostUSD, projected)))
 		}
 	}
 
@@ -142,7 +160,13 @@ func Run(ctx context.Context, opts Options) (*cliresult.Result, error) {
 		return finalize(cliresult.StageError("model3d", err))
 	}
 	_ = run.MarkStage("model3d", runs.StatusComplete, modElapsed, nil)
-	result.Stages["model3d"] = cliresult.StageBrief{Status: cliresult.StatusComplete, ElapsedMs: modElapsed.Milliseconds()}
+	_ = run.SetStageCost("model3d", provider.HunyuanRapidCostUSD)
+	result.Stages["model3d"] = cliresult.StageBrief{
+		Status:          cliresult.StatusComplete,
+		ElapsedMs:       modElapsed.Milliseconds(),
+		CostEstimateUSD: provider.HunyuanRapidCostUSD,
+	}
+	result.CostEstimateUSD += provider.HunyuanRapidCostUSD
 	if !opts.JSON {
 		display.StageDone(modStart)
 		if stat, statErr := os.Stat(modelPath); statErr == nil {

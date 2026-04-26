@@ -44,11 +44,14 @@ func main() {
 				prompt = ""
 			}
 
+			maxCost, _ := cmd.Flags().GetFloat64("max-cost")
+
 			result, runErr := create.Run(cmd.Context(), create.Options{
 				Prompt:     prompt,
 				OutputPath: outputPath,
 				JSON:       jsonOut,
 				From:       from,
+				MaxCostUSD: maxCost,
 			})
 
 			if jsonOut && result != nil {
@@ -64,6 +67,7 @@ func main() {
 	createCmd.Flags().StringP("output", "o", "", "output path for the generated .glb file")
 	createCmd.Flags().Bool("json", false, "print structured JSON result to stdout")
 	createCmd.Flags().String("from", "", "use this image instead of generating one with DALL-E")
+	createCmd.Flags().Float64("max-cost", 0, "abort before the Hunyuan call if cumulative cost would exceed this many USD (0 = no cap)")
 
 	resumeCmd := &cobra.Command{
 		Use:           "resume <run-id>",
@@ -80,11 +84,14 @@ func main() {
 			jsonOut, _ := cmd.Flags().GetBool("json")
 			stage, _ := cmd.Flags().GetString("from")
 
+			maxCost, _ := cmd.Flags().GetFloat64("max-cost")
+
 			result, runErr := resume.Run(cmd.Context(), resume.Options{
 				ParentRunID: args[0],
 				Stage:       stage,
 				OutputPath:  outputPath,
 				JSON:        jsonOut,
+				MaxCostUSD:  maxCost,
 			})
 
 			if jsonOut && result != nil {
@@ -100,6 +107,7 @@ func main() {
 	resumeCmd.Flags().StringP("output", "o", "", "output path for the regenerated .glb")
 	resumeCmd.Flags().Bool("json", false, "print structured JSON result to stdout")
 	resumeCmd.Flags().String("from", "model3d", "stage to resume from (currently only model3d)")
+	resumeCmd.Flags().Float64("max-cost", 0, "abort if Hunyuan call would exceed this many USD (0 = no cap)")
 
 	root.AddCommand(createCmd)
 	root.AddCommand(resumeCmd)

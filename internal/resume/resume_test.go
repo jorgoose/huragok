@@ -86,6 +86,41 @@ func TestResumeParentMissingConcept(t *testing.T) {
 	}
 }
 
+func TestResumeMaxCostViolation(t *testing.T) {
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "fake-id")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "fake-key")
+
+	root := t.TempDir()
+	parent, err := runs.New(root, "test", "out.glb")
+	if err != nil {
+		t.Fatalf("creating parent run: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(parent.Dir(), "concept.png"), []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Run(context.Background(), Options{
+		ParentRunID: parent.Meta.RunID,
+		Stage:       "model3d",
+		OutputPath:  "out.glb",
+		WorkDir:     root,
+		MaxCostUSD:  0.05,
+	})
+	if err == nil {
+		t.Fatal("expected max-cost cap error")
+	}
+	var pe *cliresult.PipelineError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *cliresult.PipelineError, got %T", err)
+	}
+	if pe.Code != cliresult.ExitConfig {
+		t.Errorf("Code: got %d want %d", pe.Code, cliresult.ExitConfig)
+	}
+	if !strings.Contains(err.Error(), "max-cost") {
+		t.Errorf("error should mention max-cost: %v", err)
+	}
+}
+
 func TestResumeMissingHunyuanCreds(t *testing.T) {
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "")
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "")

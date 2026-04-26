@@ -91,10 +91,32 @@ func TestResultWriteJSONShape(t *testing.T) {
 			t.Errorf("missing key %q", key)
 		}
 	}
-	for _, key := range []string{"error", "parent_run_id"} {
+	for _, key := range []string{"error", "parent_run_id", "cost_estimate_usd"} {
 		if _, ok := got[key]; ok {
 			t.Errorf("key %q should be omitted when empty", key)
 		}
+	}
+}
+
+func TestResultWriteJSONIncludesCost(t *testing.T) {
+	r := &Result{
+		RunID:           "x",
+		Status:          StatusComplete,
+		CostEstimateUSD: 0.14,
+		Stages: map[string]StageBrief{
+			"image":   {Status: StatusComplete, ElapsedMs: 1, CostEstimateUSD: 0.04},
+			"model3d": {Status: StatusComplete, ElapsedMs: 1, CostEstimateUSD: 0.10},
+		},
+	}
+	var buf bytes.Buffer
+	if err := r.WriteJSON(&buf); err != nil {
+		t.Fatalf("WriteJSON: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"cost_estimate_usd": 0.14`) {
+		t.Errorf("expected total cost: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `"cost_estimate_usd": 0.04`) {
+		t.Errorf("expected per-stage cost: %s", buf.String())
 	}
 }
 

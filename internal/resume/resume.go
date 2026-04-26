@@ -19,6 +19,7 @@ type Options struct {
 	OutputPath  string
 	JSON        bool
 	WorkDir     string
+	MaxCostUSD  float64 // 0 = no cap; otherwise abort if Hunyuan call would exceed
 }
 
 // Run re-executes a single stage of a previous run. It creates a NEW run
@@ -119,6 +120,13 @@ func Run(ctx context.Context, opts Options) (*cliresult.Result, error) {
 	_ = run.MarkStage("image", runs.StatusComplete, 0, nil)
 	result.Stages["image"] = cliresult.StageBrief{Status: cliresult.StatusComplete, ElapsedMs: 0}
 
+	// Pre-flight max-cost check.
+	if opts.MaxCostUSD > 0 && provider.HunyuanRapidCostUSD > opts.MaxCostUSD {
+		return finalize(cliresult.ConfigError(fmt.Errorf(
+			"--max-cost cap of $%.2f would be exceeded by Hunyuan3D call ($%.2f)",
+			opts.MaxCostUSD, provider.HunyuanRapidCostUSD)))
+	}
+
 	modStart := time.Now()
 	if !opts.JSON {
 		display.StageStart("Generating 3D model via Hunyuan3D...")
@@ -132,7 +140,13 @@ func Run(ctx context.Context, opts Options) (*cliresult.Result, error) {
 		return finalize(cliresult.StageError("model3d", err))
 	}
 	_ = run.MarkStage("model3d", runs.StatusComplete, modElapsed, nil)
-	result.Stages["model3d"] = cliresult.StageBrief{Status: cliresult.StatusComplete, ElapsedMs: modElapsed.Milliseconds()}
+	_ = run.SetStageCost("model3d", provider.HunyuanRapidCostUSD)
+	result.Stages["model3d"] = cliresult.StageBrief{
+		Status:          cliresult.StatusComplete,
+		ElapsedMs:       modElapsed.Milliseconds(),
+		CostEstimateUSD: provider.HunyuanRapidCostUSD,
+	}
+	result.CostEstimateUSD += provider.HunyuanRapidCostUSD
 	if !opts.JSON {
 		display.StageDone(modStart)
 		if stat, statErr := os.Stat(modelPath); statErr == nil {

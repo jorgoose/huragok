@@ -67,9 +67,10 @@ type Meta struct {
 }
 
 type StageResult struct {
-	Status    string `json:"status"`
-	ElapsedMs int64  `json:"elapsed_ms,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Status          string  `json:"status"`
+	ElapsedMs       int64   `json:"elapsed_ms,omitempty"`
+	Error           string  `json:"error,omitempty"`
+	CostEstimateUSD float64 `json:"cost_estimate_usd,omitempty"`
 }
 
 type Run struct {
@@ -146,6 +147,14 @@ func (r *Run) SetImageSource(s string) error {
 // SetParentRunID records that this run resumes from another.
 func (r *Run) SetParentRunID(id string) error {
 	r.Meta.ParentRunID = id
+	return r.WriteMeta()
+}
+
+// SetStageCost records the estimated USD cost of a stage.
+func (r *Run) SetStageCost(name string, cost float64) error {
+	stage := r.Meta.Stages[name]
+	stage.CostEstimateUSD = cost
+	r.Meta.Stages[name] = stage
 	return r.WriteMeta()
 }
 

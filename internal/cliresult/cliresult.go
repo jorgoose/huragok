@@ -25,18 +25,20 @@ const (
 )
 
 type Result struct {
-	RunID          string                `json:"run_id,omitempty"`
-	ParentRunID    string                `json:"parent_run_id,omitempty"`
-	Status         string                `json:"status"`
-	Stages         map[string]StageBrief `json:"stages,omitempty"`
-	Output         string                `json:"output,omitempty"`
-	ElapsedSeconds float64               `json:"elapsed_seconds"`
-	Error          *ResultError          `json:"error,omitempty"`
+	RunID           string                `json:"run_id,omitempty"`
+	ParentRunID     string                `json:"parent_run_id,omitempty"`
+	Status          string                `json:"status"`
+	Stages          map[string]StageBrief `json:"stages,omitempty"`
+	Output          string                `json:"output,omitempty"`
+	ElapsedSeconds  float64               `json:"elapsed_seconds"`
+	CostEstimateUSD float64               `json:"cost_estimate_usd,omitempty"`
+	Error           *ResultError          `json:"error,omitempty"`
 }
 
 type StageBrief struct {
-	Status    string `json:"status"`
-	ElapsedMs int64  `json:"elapsed_ms"`
+	Status          string  `json:"status"`
+	ElapsedMs       int64   `json:"elapsed_ms"`
+	CostEstimateUSD float64 `json:"cost_estimate_usd,omitempty"`
 }
 
 type ResultError struct {

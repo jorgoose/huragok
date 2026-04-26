@@ -121,6 +121,32 @@ func TestRunFromMissingImage(t *testing.T) {
 	}
 }
 
+func TestRunFromMaxCostViolation(t *testing.T) {
+	t.Setenv("HURAGOK_OPENAI_KEY", "")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "fake-id")
+	t.Setenv("HURAGOK_HUNYUAN_SECRET_KEY", "fake-key")
+
+	_, err := Run(context.Background(), Options{
+		From:       "create_test.go",
+		OutputPath: "o.glb",
+		WorkDir:    t.TempDir(),
+		MaxCostUSD: 0.05, // less than the Hunyuan call's estimate
+	})
+	if err == nil {
+		t.Fatal("expected max-cost cap error")
+	}
+	var pe *cliresult.PipelineError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *cliresult.PipelineError, got %T", err)
+	}
+	if pe.Code != cliresult.ExitConfig {
+		t.Errorf("Code: got %d want %d", pe.Code, cliresult.ExitConfig)
+	}
+	if !strings.Contains(err.Error(), "max-cost") {
+		t.Errorf("error should mention max-cost: %v", err)
+	}
+}
+
 func TestRunFromSkipsOpenAIRequirement(t *testing.T) {
 	t.Setenv("HURAGOK_OPENAI_KEY", "")
 	t.Setenv("HURAGOK_HUNYUAN_SECRET_ID", "fake-id")
