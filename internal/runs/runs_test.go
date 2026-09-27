@@ -2,6 +2,7 @@ package runs
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -154,6 +155,121 @@ func TestReadMissingRun(t *testing.T) {
 	_, err := Read(t.TempDir(), "2026-04-19_134522_a3f8c2")
 	if err == nil {
 		t.Fatal("expected error for nonexistent run")
+	}
+}
+
+func TestListEmpty(t *testing.T) {
+	got, err := List(t.TempDir())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty list, got %d entries", len(got))
+	}
+}
+
+func TestListReturnsAllRuns(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 3; i++ {
+		if _, err := New(root, fmt.Sprintf("prompt %d", i), "out.glb"); err != nil {
+			t.Fatalf("New %d: %v", i, err)
+		}
+	}
+	got, err := List(root)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("expected 3 runs, got %d", len(got))
+	}
+}
+
+func TestListSortsNewestFirst(t *testing.T) {
+	root := t.TempDir()
+	// Manually create dirs with controlled IDs so sort behavior is verifiable
+	// regardless of timing on fast machines.
+	for _, id := range []string{
+		"2026-04-18_120000_aaaaaa",
+		"2026-04-19_120000_bbbbbb",
+		"2026-04-17_120000_cccccc",
+	} {
+		dir := filepath.Join(root, "runs", id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		meta := Meta{RunID: id, Status: StatusComplete, Stages: map[string]StageResult{}}
+		data, _ := json.Marshal(meta)
+		if err := os.WriteFile(filepath.Join(dir, "meta.json"), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"2026-04-19_120000_bbbbbb",
+		"2026-04-18_120000_aaaaaa",
+		"2026-04-17_120000_cccccc",
+	}
+	for i, m := range got {
+		if m.RunID != want[i] {
+			t.Errorf("position %d: got %q want %q", i, m.RunID, want[i])
+		}
+	}
+}
+
+func TestListSkipsInvalidDirs(t *testing.T) {
+	root := t.TempDir()
+	if _, err := New(root, "valid", "out.glb"); err != nil {
+		t.Fatal(err)
+	}
+	// Create a junk dir that doesn't match the ID pattern.
+	if err := os.MkdirAll(filepath.Join(root, "runs", "not-a-run-id"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Errorf("expected 1 valid run, got %d", len(got))
+	}
+}
+
+func TestListArtifacts(t *testing.T) {
+	root := t.TempDir()
+	r, err := New(root, "p", "out.glb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(r.Dir(), "concept.png"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ListArtifacts(root, r.Meta.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"meta.json":   true,
+		"prompt.txt":  true,
+		"concept.png": true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("unexpected artifact %q", name)
+		}
+		delete(want, name)
+	}
+	if len(want) > 0 {
+		t.Errorf("missing artifacts: %v", want)
+	}
+}
+
+func TestListArtifactsInvalidID(t *testing.T) {
+	_, err := ListArtifacts(t.TempDir(), "../../etc")
+	if err == nil {
+		t.Fatal("expected error for invalid id")
 	}
 }
 

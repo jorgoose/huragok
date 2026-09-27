@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"time"
 )
 
@@ -46,6 +47,60 @@ func RunDir(rootDir, runID string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(rootDir, "runs", runID), nil
+}
+
+// List walks rootDir/runs/ and returns the parsed meta.json from every
+// validly-named run directory, sorted newest-first by run ID.
+// Directories whose meta.json can't be read or parsed are skipped silently —
+// runs in flight may be missing the file briefly, and litter shouldn't fail
+// the whole listing.
+func List(rootDir string) ([]Meta, error) {
+	runsDir := filepath.Join(rootDir, "runs")
+	entries, err := os.ReadDir(runsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading runs dir: %w", err)
+	}
+	var out []Meta
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if ValidateID(e.Name()) != nil {
+			continue
+		}
+		meta, err := Read(rootDir, e.Name())
+		if err != nil {
+			continue
+		}
+		out = append(out, *meta)
+	}
+	// Run IDs start with the timestamp, so descending lex sort = newest-first.
+	sort.Slice(out, func(i, j int) bool { return out[i].RunID > out[j].RunID })
+	return out, nil
+}
+
+// ListArtifacts returns the file names (not full paths) directly under the
+// run's directory.
+func ListArtifacts(rootDir, runID string) ([]string, error) {
+	dir, err := RunDir(rootDir, runID)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading run dir for %s: %w", runID, err)
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 const (
